@@ -94,7 +94,7 @@ import Data.Default
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Maybe
-import Language.Haskell.LSP.Types hiding (id, capabilities, error)
+import Language.Haskell.LSP.Types hiding (id, capabilities)
 import qualified Language.Haskell.LSP.Types as LSP
 import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.VFS
