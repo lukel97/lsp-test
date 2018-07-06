@@ -85,7 +85,10 @@ castMsg = fromMaybe (error "Failed casting a message") . decode . encodeMsg
 -- | A version of encode that encodes FromServerMessages as if they
 -- weren't wrapped.
 encodeMsg :: FromServerMessage -> B.ByteString
-encodeMsg = encode . genericToJSON (defaultOptions { sumEncoding = UntaggedValue })
+encodeMsg = encode . toJSONMsg
+
+toJSONMsg :: FromServerMessage -> Value
+toJSONMsg = genericToJSON (defaultOptions { sumEncoding = UntaggedValue })
 
 -- | Matches if the message is a log message notification or a show message notification/request.
 loggingNotification :: (MonadIO m, MonadSessionConfig m) => ConduitParser FromServerMessage m FromServerMessage

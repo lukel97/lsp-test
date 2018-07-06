@@ -59,6 +59,31 @@ executable lsp-test
   main-is:            Language/Haskell/LSP/Test/Script.hs
   default-language:   Haskell2010
   build-depends:      base >= 4.7 && < 5
+                    , haskell-lsp-types
+                    , haskell-lsp >= 0.3
+                    , aeson
+                    , ansi-terminal
+                    , async
+                    , bytestring
+                    , conduit
+                    , conduit-parse
+                    , containers
+                    , data-default
+                    , directory
+                    , filepath
+                    , lens
+                    , mtl
+                    , parser-combinators
+                    , process
+                    , text
+                    , transformers
+                    , unordered-containers
+                    , scientific
+                    , yi-rope
+  if os(windows)
+    build-depends:     Win32
+  else
+    build-depends:     unix
 
 test-suite tests
   type:                exitcode-stdio-1.0
