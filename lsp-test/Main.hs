@@ -9,20 +9,29 @@ import           Language.Haskell.LSP.Test.Script
 import           System.Environment
 import           System.FilePath
 import           System.Directory
+import           System.Exit
 import           Language.Haskell.LSP.Test.Machine
-import           Language.Haskell.LSP.Test.Parsing ( toJSONMsg )
+import           Language.Haskell.LSP.Test.Parsing
+                                                ( toJSONMsg )
+import           Language.Haskell.LSP.Test.Replay
 import           Language.Haskell.LSP.Messages
 import qualified Language.Haskell.LSP.Types    as LSP
 
 main = do
-  fileName <- head <$> getArgs
-  blocks <- parseScript <$> readFile fileName
-  print blocks
-  rootDir <- getCurrentDirectory
-  runBlocks rootDir blocks
+  args <- getArgs
+  curDir <- getCurrentDirectory
+  case args of
+    ["replay", cmd] -> replaySession cmd curDir
+    [file, cmd] -> do
+      blocks <- parseScript <$> readFile file
+      success <- runBlocks cmd curDir blocks
+      if success
+        then putStrLn "Success ✅"
+        else putStrLn "Failed ❌" >> exitFailure
+    _ -> putStrLn "usage: lsp-test (replay <cmd>)|(<file> <cmd>)"
 
-runBlocks :: FilePath -> [Block] -> IO ()
-runBlocks rootDir blocks = runMachine rootDir (map convertBlock blocks) >>= putStrLn
+runBlocks :: String -> FilePath -> [Block] -> IO Bool
+runBlocks cmd rootDir blocks = runMachine cmd rootDir (map convertBlock blocks)
   where
     convertBlock :: Block -> (String, FromServerMessage -> Bool, [Session ()])
     convertBlock (Block name w actions) = (name, mkWait w, map mkAction actions)

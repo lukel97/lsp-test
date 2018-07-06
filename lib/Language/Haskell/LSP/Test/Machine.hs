@@ -24,14 +24,14 @@ advance s _ = return s
 mkStates [] = Passed
 mkStates ((n, f, msgs):xs) = State n f msgs (mkStates xs)
 
-runMachine :: String -> [(String, FromServerMessage -> Bool, [Session ()])] -> IO String
-runMachine rootDir encodedStates =
-  runSession "hie --lsp" rootDir $ do
+runMachine :: String -> FilePath -> [(String, FromServerMessage -> Bool, [Session ()])] -> IO Bool
+runMachine cmd rootDir encodedStates =
+  runSession cmd rootDir $ do
     let f Passed = return Passed
         f s = Received <$> anyMessage >>= advance s >>= f
         initState = mkStates encodedStates
     res <- f initState
     case res of
-      Passed -> return "passed"
-      _ -> return "failed"
+      Passed -> return True
+      _ -> return False
 
