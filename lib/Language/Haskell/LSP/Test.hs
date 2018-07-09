@@ -19,9 +19,9 @@ module Language.Haskell.LSP.Test
   , runSessionWithConfig
   , Session
   , SessionConfig(..)
-  , MonadSessionConfig(..)
   , SessionException(..)
   , anySessionException
+  , withTimeout
   -- * Sending
   , sendRequest
   , sendRequest_
@@ -31,12 +31,10 @@ module Language.Haskell.LSP.Test
   , sendNotification'
   , sendResponse
   -- * Receving
+  , message
   , anyRequest
-  , request
   , anyResponse
-  , response
   , anyNotification
-  , notification
   , anyMessage
   , loggingNotification
   , publishDiagnosticsNotification
@@ -94,7 +92,7 @@ import Data.Default
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Maybe
-import Language.Haskell.LSP.Types hiding (id, capabilities)
+import Language.Haskell.LSP.Types hiding (id, capabilities, message)
 import qualified Language.Haskell.LSP.Types as LSP
 import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.VFS
@@ -151,20 +149,19 @@ runSessionWithConfig config serverExe rootDir session = do
       sendNotification Exit ExitParams
 
       return result
+  where
+  -- | Listens to the server output, makes sure it matches the record and
+  -- signals any semaphores
+  listenServer :: Handle -> SessionContext -> IO ()
+  listenServer serverOut context = do
+    msgBytes <- getNextMessage serverOut
 
--- | Listens to the server output, makes sure it matches the record and
--- signals any semaphores
-listenServer :: Handle -> Session ()
-listenServer serverOut = do
-  msgBytes <- liftIO $ getNextMessage serverOut
+    reqMap <- readMVar $ requestMap context
 
-  context <- ask
-  reqMap <- liftIO $ readMVar $ requestMap context
+    let msg = decodeFromServerMsg reqMap msgBytes
+    writeChan (messageChan context) (ServerMessage msg)
 
-  let msg = decodeFromServerMsg reqMap msgBytes
-  liftIO $ writeChan (messageChan context) msg
-
-  listenServer serverOut
+    listenServer serverOut context
 
 -- | The current text contents of a document.
 documentContents :: TextDocumentIdentifier -> Session T.Text
@@ -177,7 +174,7 @@ documentContents doc = do
 -- and returns the new content
 getDocumentEdit :: TextDocumentIdentifier -> Session T.Text
 getDocumentEdit doc = do
-  req <- request :: Session ApplyWorkspaceEditRequest
+  req <- message :: Session ApplyWorkspaceEditRequest
 
   unless (checkDocumentChanges req || checkChanges req) $
     liftIO $ throw (IncorrectApplyEditRequestException (show req))
@@ -318,7 +315,7 @@ getDocUri file = do
 
 waitForDiagnostics :: Session [Diagnostic]
 waitForDiagnostics = do
-  diagsNot <- skipManyTill anyMessage notification :: Session PublishDiagnosticsNotification
+  diagsNot <- skipManyTill anyMessage message :: Session PublishDiagnosticsNotification
   let (List diags) = diagsNot ^. params . LSP.diagnostics
   return diags
 
@@ -327,7 +324,7 @@ waitForDiagnostics = do
 -- returned.
 noDiagnostics :: Session ()
 noDiagnostics = do
-  diagsNot <- notification :: Session PublishDiagnosticsNotification
+  diagsNot <- message :: Session PublishDiagnosticsNotification
   when (diagsNot ^. params . LSP.diagnostics /= List []) $ liftIO $ throw UnexpectedDiagnosticsException
 
 -- | Returns the symbols in a document.
@@ -370,4 +367,4 @@ executeCodeAction action = do
   where handleEdit :: WorkspaceEdit -> Session ()
         handleEdit e =
           let req = RequestMessage "" (IdInt 0) WorkspaceApplyEdit (ApplyWorkspaceEditParams e)
-            in processMessage (ReqApplyWorkspaceEdit req)
+            in updateState (ReqApplyWorkspaceEdit req)
