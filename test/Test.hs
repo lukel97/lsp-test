@@ -8,6 +8,7 @@ import           Data.Aeson
 import           Data.Default
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as T
+import           Control.Applicative.Combinators
 import           Control.Concurrent
 import           Control.Monad.IO.Class
 import           Control.Monad
@@ -16,12 +17,15 @@ import           GHC.Generics
 import           Language.Haskell.LSP.Messages
 import           Language.Haskell.LSP.Test
 import           Language.Haskell.LSP.Test.Replay
-import           Language.Haskell.LSP.TH.ClientCapabilities
-import           Language.Haskell.LSP.Types hiding (message, capabilities)
+import           Language.Haskell.LSP.Types.Capabilities
+import           Language.Haskell.LSP.Types as LSP hiding (capabilities, message)
 import           System.Timeout
 
+{-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
+{-# ANN module ("HLint: ignore Unnecessary hiding" :: String) #-}
+
 main = hspec $ do
-  describe "manual session" $ do
+  describe "Session" $ do
     it "fails a test" $
       -- TODO: Catch the exception in haskell-lsp-test and provide nicer output
       let session = runSession "hie --lsp" "test/data/renamePass" $ do
@@ -29,16 +33,13 @@ main = hspec $ do
                       skipMany loggingNotification
                       anyRequest
         in session `shouldThrow` anyException
-    it "can get initialize response" $ runSession "hie --lsp" "test/data/renamePass" $ do
+    it "initializeResponse" $ runSession "hie --lsp" "test/data/renamePass" $ do
       rsp <- initializeResponse
       liftIO $ rsp ^. result `shouldNotBe` Nothing
 
-    it "can register specific capabilities" $ do
-      let caps = def { _workspace = Just workspaceCaps }
-          workspaceCaps = def { _didChangeConfiguration = Just configCaps }
-          configCaps = DidChangeConfigurationClientCapabilities (Just True)
-          conf = def { capabilities = caps }
-      runSessionWithConfig conf "hie --lsp" "test/data/renamePass" $ return ()
+    it "runSessionWithConfig" $
+      runSessionWithConfig (def { capabilities = didChangeCaps })
+        "hie --lsp" "test/data/renamePass" $ return ()
 
     describe "withTimeout" $ do
       it "times out" $
@@ -85,10 +86,10 @@ main = hspec $ do
                 getDocumentSymbols doc
                 -- should now timeout
                 skipManyTill anyMessage message :: Session ApplyWorkspaceEditRequest
-        in sesh `shouldThrow` (== TimeoutException)
+        in sesh `shouldThrow` (== Timeout)
 
 
-    describe "exceptions" $ do
+    describe "SessionException" $ do
       it "throw on time out" $
         let sesh = runSessionWithConfig (def {messageTimeout = 10}) "hie --lsp" "test/data/renamePass" $ do
                 skipMany loggingNotification
@@ -104,11 +105,11 @@ main = hspec $ do
 
       describe "UnexpectedMessageException" $ do
         it "throws when there's an unexpected message" $
-          let selector (UnexpectedMessageException "Publish diagnostics notification" (NotLogMessage _)) = True
+          let selector (UnexpectedMessage "Publish diagnostics notification" (NotLogMessage _)) = True
               selector _ = False
             in runSession "hie --lsp" "test/data/renamePass" publishDiagnosticsNotification `shouldThrow` selector
         it "provides the correct types that were expected and received" $
-          let selector (UnexpectedMessageException "ResponseMessage WorkspaceEdit" (RspDocumentSymbols _)) = True
+          let selector (UnexpectedMessage "ResponseMessage WorkspaceEdit" (RspDocumentSymbols _)) = True
               selector _ = False
               sesh = do
                 doc <- openDoc "Desktop/simple.hs" "haskell"
@@ -118,11 +119,11 @@ main = hspec $ do
             in runSession "hie --lsp" "test/data/renamePass" sesh
               `shouldThrow` selector
 
-  describe "replay session" $ do
+  describe "replaySession" $ do
     it "passes a test" $
       replaySession "hie --lsp" "test/data/renamePass"
     it "fails a test" $
-      let selector (ReplayOutOfOrderException _ _) = True
+      let selector (ReplayOutOfOrder _ _) = True
           selector _ = False
         in replaySession "hie --lsp" "test/data/renameFail" `shouldThrow` selector
 
@@ -160,9 +161,9 @@ main = hspec $ do
         noDiagnostics
 
         contents <- documentContents doc
-        liftIO $ contents `shouldBe` "main :: IO Int\nmain = return 42"
+        liftIO $ contents `shouldBe` "main :: IO Int\nmain = return 42\n"
 
-  describe "documentEdit" $
+  describe "getDocumentEdit" $
     it "automatically consumes applyedit requests" $
       runSession "hie --lsp" "test/data/refactor" $ do
         doc <- openDoc "Main.hs" "haskell"
@@ -173,7 +174,7 @@ main = hspec $ do
             reqParams = ExecuteCommandParams "applyrefact:applyOne" (Just (List [args]))
         sendRequest_ WorkspaceExecuteCommand reqParams
         contents <- getDocumentEdit doc
-        liftIO $ contents `shouldBe` "main :: IO Int\nmain = return 42"
+        liftIO $ contents `shouldBe` "main :: IO Int\nmain = return 42\n"
         noDiagnostics
 
   describe "getAllCodeActions" $
@@ -201,6 +202,69 @@ main = hspec $ do
         mainSymbol ^. kind `shouldBe` SkFunction
         mainSymbol ^. location . range `shouldBe` Range (Position 3 0) (Position 3 4)
         mainSymbol ^. containerName `shouldBe` Nothing
+
+  describe "applyEdit" $ do
+    it "increments the version" $ runSessionWithConfig (def { capabilities = docChangesCaps }) "hie --lsp" "test/data/renamePass" $ do
+      doc <- openDoc "Desktop/simple.hs" "haskell"
+      VersionedTextDocumentIdentifier _ (Just oldVersion) <- getVersionedDoc doc
+      let edit = TextEdit (Range (Position 1 1) (Position 1 3)) "foo" 
+      VersionedTextDocumentIdentifier _ (Just newVersion) <- applyEdit doc edit
+      liftIO $ newVersion `shouldBe` oldVersion + 1
+    it "changes the document contents" $ runSession "hie --lsp" "test/data/renamePass" $ do
+      doc <- openDoc "Desktop/simple.hs" "haskell"
+      let edit = TextEdit (Range (Position 0 0) (Position 0 2)) "foo" 
+      applyEdit doc edit
+      contents <- documentContents doc
+      liftIO $ contents `shouldSatisfy` T.isPrefixOf "foodule"
+
+  describe "getCompletions" $
+    it "works" $ runSession "hie --lsp" "test/data/renamePass" $ do
+      doc <- openDoc "Desktop/simple.hs" "haskell"
+      [item] <- getCompletions doc (Position 5 5)
+      liftIO $ do
+        item ^. label `shouldBe` "interactWithUser"
+        item ^. kind `shouldBe` Just CiFunction
+        item ^. detail `shouldBe` Just "Items -> IO ()\nMain"
+
+  describe "getReferences" $
+    it "works" $ runSession "hie --lsp" "test/data/renamePass" $ do
+      doc <- openDoc "Desktop/simple.hs" "haskell"
+      let pos = Position 40 3 -- interactWithUser
+          uri = doc ^. LSP.uri
+      refs <- getReferences doc pos True
+      liftIO $ refs `shouldContain` map (Location uri) [
+          mkRange 41 0 41 16
+        , mkRange 75 6 75 22
+        , mkRange 71 6 71 22
+        ]
+
+  describe "waitForDiagnosticsSource" $
+    it "works" $ runSession "hie --lsp" "test/data" $ do
+      openDoc "Error.hs" "haskell"
+      [diag] <- waitForDiagnosticsSource "ghcmod"
+      liftIO $ do
+        diag ^. severity `shouldBe` Just DsError
+        diag ^. source `shouldBe` Just "ghcmod"
+
+  describe "rename" $
+    it "works" $ runSession "hie --lsp" "test/data" $ do
+      doc <- openDoc "Rename.hs" "haskell"
+      rename doc (Position 1 0) "bar"
+      documentContents doc >>= liftIO . shouldBe "main = bar\nbar = return 42\n"
+
+mkRange sl sc el ec = Range (Position sl sc) (Position el ec)
+
+didChangeCaps :: ClientCapabilities
+didChangeCaps = def { _workspace = Just workspaceCaps }
+  where
+    workspaceCaps = def { _didChangeConfiguration = Just configCaps }
+    configCaps = DidChangeConfigurationClientCapabilities (Just True)
+
+docChangesCaps :: ClientCapabilities
+docChangesCaps = def { _workspace = Just workspaceCaps }
+  where
+    workspaceCaps = def { _workspaceEdit = Just editCaps }
+    editCaps = WorkspaceEditClientCapabilities (Just True)
 
 data ApplyOneParams = AOP
   { file      :: Uri

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 module Language.Haskell.LSP.Test.Machine where
 
 import Control.Monad.IO.Class
@@ -9,10 +8,10 @@ data State = State String (FromServerMessage -> Bool) [Session ()] State
            | Passed
            | Failed
 
-data Event = Timeout | Received FromServerMessage
+data Event = TimeoutEvent | Received FromServerMessage
 
 advance :: State -> Event -> Session State
-advance _ Timeout = return Failed
+advance _ TimeoutEvent = return Failed
 advance s@(State name f actions next) (Received msg)
   | f msg = do
     liftIO $ putStrLn name

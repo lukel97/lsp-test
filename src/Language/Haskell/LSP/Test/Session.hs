@@ -13,6 +13,7 @@ module Language.Haskell.LSP.Test.Session
   , get
   , put
   , modify
+  , modifyM
   , ask
   , asks
   , sendMessage
@@ -44,8 +45,9 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe
+import Data.Function
 import Language.Haskell.LSP.Messages
-import Language.Haskell.LSP.TH.ClientCapabilities
+import Language.Haskell.LSP.Types.Capabilities
 import Language.Haskell.LSP.Types hiding (error)
 import Language.Haskell.LSP.VFS
 import Language.Haskell.LSP.Test.Decoding
@@ -123,6 +125,9 @@ class Monad m => HasState s m where
   modify :: (s -> s) -> m ()
   modify f = get >>= put . f
 
+  modifyM :: (HasState s m, Monad m) => (s -> m s) -> m ()
+  modifyM f = get >>= f >>= put
+
 instance Monad m => HasState s (ParserStateReader a s r m) where
   get = lift State.get
   put = lift . State.put
@@ -135,16 +140,14 @@ instance Monad m => HasState SessionState (ConduitM a b (StateT SessionState m))
 type ParserStateReader a s r m = ConduitParser a (StateT s (ReaderT r m))
 
 runSession :: SessionContext -> SessionState -> Session a -> IO (a, SessionState)
-runSession context state session =
-    -- source <- sourceList <$> getChanContents (messageChan context)
-    runReaderT (runStateT conduit state) context
+runSession context state session = runReaderT (runStateT conduit state) context
   where
     conduit = runConduit $ chanSource .| watchdog .| updateStateC .| runConduitParser (catchError session handler)
         
     handler (Unexpected "ConduitParser.empty") = do
       lastMsg <- fromJust . lastReceivedMessage <$> get
       name <- getParserName
-      liftIO $ throw (UnexpectedMessageException (T.unpack name) lastMsg)
+      liftIO $ throw (UnexpectedMessage (T.unpack name) lastMsg)
 
     handler e = throw e
 
@@ -159,7 +162,7 @@ runSession context state session =
       curId <- curTimeoutId <$> get
       case msg of
         ServerMessage sMsg -> yield sMsg
-        TimeoutMessage tId -> when (curId == tId) $ throw TimeoutException
+        TimeoutMessage tId -> when (curId == tId) $ throw Timeout
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
 -- It also does not automatically send initialize and exit messages.
@@ -205,6 +208,7 @@ updateState (NotPublishDiagnostics n) = do
 
 updateState (ReqApplyWorkspaceEdit r) = do
 
+
   allChangeParams <- case r ^. params . edit . documentChanges of
     Just (List cs) -> do
       mapM_ (checkIfNeedsOpened . (^. textDocument . uri)) cs
@@ -215,15 +219,27 @@ updateState (ReqApplyWorkspaceEdit r) = do
         return $ concatMap (uncurry getChangeParams) (HashMap.toList cs)
       Nothing -> error "No changes!"
 
-  oldVFS <- vfs <$> get
-  newVFS <- liftIO $ changeFromServerVFS oldVFS r
-  modify (\s -> s { vfs = newVFS })
+  modifyM $ \s -> do
+    newVFS <- liftIO $ changeFromServerVFS (vfs s) r
+    return $ s { vfs = newVFS }
 
   let groupedParams = groupBy (\a b -> (a ^. textDocument == b ^. textDocument)) allChangeParams
       mergedParams = map mergeParams groupedParams
 
   -- TODO: Don't do this when replaying a session
   forM_ mergedParams (sendMessage . NotificationMessage "2.0" TextDocumentDidChange)
+
+  -- Update VFS to new document versions
+  let sortedVersions = map (sortBy (compare `on` (^. textDocument . version))) groupedParams
+      latestVersions = map ((^. textDocument) . last) sortedVersions
+      bumpedVersions = map (version . _Just +~ 1) latestVersions
+
+  forM_ bumpedVersions $ \(VersionedTextDocumentIdentifier uri v) ->
+    modify $ \s ->
+      let oldVFS = vfs s
+          update (VirtualFile oldV t) = VirtualFile (fromMaybe oldV v) t
+          newVFS = Map.adjust update uri oldVFS
+      in s { vfs = newVFS }
 
   where checkIfNeedsOpened uri = do
           oldVFS <- vfs <$> get
@@ -237,15 +253,15 @@ updateState (ReqApplyWorkspaceEdit r) = do
                 msg = NotificationMessage "2.0" TextDocumentDidOpen (DidOpenTextDocumentParams item)
             liftIO $ B.hPut (serverIn ctx) $ addHeader (encode msg)
 
-            oldVFS <- vfs <$> get
-            newVFS <- liftIO $ openVFS oldVFS msg
-            modify (\s -> s { vfs = newVFS })
+            modifyM $ \s -> do 
+              newVFS <- liftIO $ openVFS (vfs s) msg
+              return $ s { vfs = newVFS }
 
         getParams (TextDocumentEdit docId (List edits)) =
           let changeEvents = map (\e -> TextDocumentContentChangeEvent (Just (e ^. range)) Nothing (e ^. newText)) edits
             in DidChangeTextDocumentParams docId (List changeEvents)
 
-        textDocumentVersions uri = map (VersionedTextDocumentIdentifier uri) [0..]
+        textDocumentVersions uri = map (VersionedTextDocumentIdentifier uri . Just) [0..]
 
         textDocumentEdits uri edits = map (\(v, e) -> TextDocumentEdit v (List [e])) $ zip (textDocumentVersions uri) edits
 
