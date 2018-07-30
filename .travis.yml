@@ -36,7 +36,7 @@ before_install:
   # - export PATH=$HOME/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/x/hie/build:$PATH
   - stack --no-terminal --skip-ghc-check install -j2
   - stack exec hoogle generate
-  - cd ..
+  - cd $TRAVIS_BUILD_DIR
   - npm update
   - npm i -g javascript-typescript-langserver
 
