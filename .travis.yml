@@ -23,8 +23,8 @@ before_install:
   - export PATH=$HOME/.local/bin:$PATH
   - travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
     
-  # It's ok to fail
   - cd $HOME
+  # It's ok to fail
   - git clone https://github.com/haskell/haskell-ide-engine.git --recursive || true
   - cd haskell-ide-engine
   - git pull
