@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
 
 module Language.Haskell.LSP.Test.Session
-  ( Session
+  ( SessionT
   , SessionConfig(..)
   , SessionMessage(..)
   , SessionContext(..)
@@ -23,6 +23,7 @@ module Language.Haskell.LSP.Test.Session
 
 where
 
+import Conduit
 import Control.Concurrent hiding (yield)
 import Control.Exception
 import Control.Lens hiding (List)
@@ -36,7 +37,6 @@ import qualified Control.Monad.Trans.State as State (get, put)
 import qualified Data.ByteString.Lazy.Char8 as B
 import Data.Aeson
 import Data.Aeson.Encode.Pretty
-import Data.Conduit as Conduit
 import Data.Conduit.Parser as Parser
 import Data.Default
 import Data.Foldable
@@ -68,7 +68,7 @@ import System.IO
 --   sendNotification TextDocumentDidOpen (DidOpenTextDocumentParams docItem)
 --   diagnostics <- getMessage :: Session PublishDiagnosticsNotification
 -- @
-type Session = ParserStateReader FromServerMessage SessionState SessionContext IO
+type SessionT m = ParserStateReader FromServerMessage SessionState SessionContext m
 
 -- | Stuff you can configure for a 'Session'.
 data SessionConfig = SessionConfig
@@ -141,25 +141,27 @@ instance Monad m => HasState SessionState (ConduitM a b (StateT SessionState m))
 
 type ParserStateReader a s r m = ConduitParser a (StateT s (ReaderT r m))
 
-runSession :: SessionContext -> SessionState -> Session a -> IO (a, SessionState)
+runSession :: (MonadIO m, MonadThrow m) => SessionContext -> SessionState -> SessionT m a -> m (a, SessionState)
 runSession context state session = runReaderT (runStateT conduit state) context
   where
     conduit = runConduit $ chanSource .| watchdog .| updateStateC .| runConduitParser (catchError session handler)
         
+    handler :: MonadIO m => ConduitParserException -> SessionT m a
     handler (Unexpected "ConduitParser.empty") = do
       lastMsg <- fromJust . lastReceivedMessage <$> get
       name <- getParserName
       liftIO $ throw (UnexpectedMessage (T.unpack name) lastMsg)
 
-    handler e = throw e
+    handler e = liftIO $ throw e
 
+    chanSource :: MonadIO m => ConduitT () SessionMessage m ()
     chanSource = do
       msg <- liftIO $ readChan (messageChan context)
       yield msg
       chanSource
 
 
-    watchdog :: ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
+    watchdog :: MonadIO m => ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
     watchdog = Conduit.awaitForever $ \msg -> do
       curId <- curTimeoutId <$> get
       case msg of
@@ -168,35 +170,37 @@ runSession context state session = runReaderT (runStateT conduit state) context
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
 -- It also does not automatically send initialize and exit messages.
-runSessionWithHandles :: Handle -- ^ Server in
+runSessionWithHandles :: (MonadIO m, MonadThrow m)
+                      => Handle -- ^ Server in
                       -> Handle -- ^ Server out
                       -> (Handle -> SessionContext -> IO ()) -- ^ Server listener
                       -> SessionConfig
                       -> ClientCapabilities
                       -> FilePath -- ^ Root directory
-                      -> Session a
-                      -> IO a
+                      -> SessionT m a
+                      -> m a
 runSessionWithHandles serverIn serverOut serverHandler config caps rootDir session = do
-  absRootDir <- canonicalizePath rootDir
+  absRootDir <- liftIO $ canonicalizePath rootDir
 
-  hSetBuffering serverIn  NoBuffering
-  hSetBuffering serverOut NoBuffering
+  liftIO $ do
+    hSetBuffering serverIn  NoBuffering
+    hSetBuffering serverOut NoBuffering
 
-  reqMap <- newMVar newRequestMap
-  messageChan <- newChan
-  initRsp <- newEmptyMVar
+  reqMap <- liftIO $ newMVar newRequestMap
+  messageChan <- liftIO newChan
+  initRsp <- liftIO newEmptyMVar
 
   let context = SessionContext serverIn absRootDir messageChan reqMap initRsp config caps
       initState = SessionState (IdInt 0) mempty mempty 0 False Nothing
 
-  threadId <- forkIO $ void $ serverHandler serverOut context
+  threadId <- liftIO $ forkIO $ void $ serverHandler serverOut context
   (result, _) <- runSession context initState session
 
-  killThread threadId
+  liftIO $ killThread threadId
 
   return result
 
-updateStateC :: ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
+updateStateC :: MonadIO m => ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
 updateStateC = awaitForever $ \msg -> do
   updateState msg
   yield msg
@@ -291,7 +295,7 @@ sendMessage msg = do
 -- | Execute a block f that will throw a 'TimeoutException'
 -- after duration seconds. This will override the global timeout
 -- for waiting for messages to arrive defined in 'SessionConfig'.
-withTimeout :: Int -> Session a -> Session a
+withTimeout :: MonadIO m => Int -> SessionT m a -> SessionT m a
 withTimeout duration f = do
   chan <- asks messageChan
   timeoutId <- curTimeoutId <$> get 

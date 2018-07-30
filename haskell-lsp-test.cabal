@@ -19,6 +19,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Language.Haskell.LSP.Test
                      , Language.Haskell.LSP.Test.Replay
+                     , Language.Haskell.LSP.Test.Machine
   reexported-modules:  haskell-lsp:Language.Haskell.LSP.Types
                      , haskell-lsp:Language.Haskell.LSP.Types.Capabilities
                      , parser-combinators:Control.Applicative.Combinators
@@ -34,7 +35,9 @@ library
                      , containers
                      , data-default
                      , directory
+                     , exceptions
                      , filepath
+                     , hedgehog
                      , lens
                      , mtl
                      , parser-combinators

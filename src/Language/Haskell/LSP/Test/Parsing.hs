@@ -22,7 +22,7 @@ import Language.Haskell.LSP.Test.Messages
 import Language.Haskell.LSP.Test.Session
 import System.Console.ANSI
 
-satisfy :: (FromServerMessage -> Bool) -> Session FromServerMessage
+satisfy :: MonadIO m => (FromServerMessage -> Bool) -> SessionT m FromServerMessage
 satisfy pred = do
   
   skipTimeout <- overridingTimeout <$> get
@@ -52,31 +52,31 @@ satisfy pred = do
     else empty
 
 -- | Matches a message of type 'a'.
-message :: forall a. (Typeable a, FromJSON a) => Session a
+message :: forall a m. (Typeable a, FromJSON a, MonadIO m) => SessionT m a
 message =
   let parser = decode . encodeMsg :: FromServerMessage -> Maybe a
   in named (T.pack $ show $ head $ snd $ splitTyConApp $ last $ typeRepArgs $ typeOf parser) $
     castMsg <$> satisfy (isJust . parser)
 
 -- | Matches if the message is a notification.
-anyNotification :: Session FromServerMessage
+anyNotification :: MonadIO m => SessionT m FromServerMessage
 anyNotification = named "Any notification" $ satisfy isServerNotification
 
 -- | Matches if the message is a request.
-anyRequest :: Session FromServerMessage
+anyRequest :: MonadIO m => SessionT m FromServerMessage
 anyRequest = named "Any request" $ satisfy isServerRequest
 
 -- | Matches if the message is a response.
-anyResponse :: Session FromServerMessage
+anyResponse :: MonadIO m => SessionT m FromServerMessage
 anyResponse = named "Any response" $ satisfy isServerResponse
 
-responseForId :: forall a. FromJSON a => LspId -> Session (ResponseMessage a)
+responseForId :: forall a m. (FromJSON a, MonadIO m) => LspId -> SessionT m (ResponseMessage a)
 responseForId lid = named (T.pack $ "Response for id: " ++ show lid) $ do
   let parser = decode . encodeMsg :: FromServerMessage -> Maybe (ResponseMessage a)
   x <- satisfy (maybe False (\z -> z ^. LSP.id == responseId lid) . parser)
   return $ castMsg x
 
-anyMessage :: Session FromServerMessage
+anyMessage :: MonadIO m => SessionT m FromServerMessage
 anyMessage = satisfy (const True)
 
 -- | A stupid method for getting out the inner message.
@@ -92,7 +92,7 @@ encodeMsgPretty :: FromServerMessage -> B.ByteString
 encodeMsgPretty = encodePretty . genericToJSON (defaultOptions { sumEncoding = UntaggedValue })
 
 -- | Matches if the message is a log message notification or a show message notification/request.
-loggingNotification :: Session FromServerMessage
+loggingNotification :: MonadIO m => SessionT m FromServerMessage
 loggingNotification = named "Logging notification" $ satisfy shouldSkip
   where
     shouldSkip (NotLogMessage _) = True
@@ -100,7 +100,7 @@ loggingNotification = named "Logging notification" $ satisfy shouldSkip
     shouldSkip (ReqShowMessage _) = True
     shouldSkip _ = False
 
-publishDiagnosticsNotification :: Session PublishDiagnosticsNotification
+publishDiagnosticsNotification :: MonadIO m => SessionT m PublishDiagnosticsNotification
 publishDiagnosticsNotification = named "Publish diagnostics notification" $ do
   NotPublishDiagnostics diags <- satisfy test
   return diags

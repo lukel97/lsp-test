@@ -19,7 +19,7 @@ module Language.Haskell.LSP.Test
     runSession
   , runSessionWithHandles
   , runSessionWithConfig
-  , Session
+  , SessionT
   , SessionConfig(..)
   , SessionException(..)
   , anySessionException
@@ -49,6 +49,7 @@ module Language.Haskell.LSP.Test
   -- ** Documents
   , openDoc
   , closeDoc
+  , getOpenDocs
   , documentContents
   , getDocumentEdit
   , getDocUri
@@ -83,6 +84,7 @@ module Language.Haskell.LSP.Test
   , applyEdit
   ) where
 
+import Conduit (MonadThrow)
 import Control.Applicative.Combinators
 import Control.Concurrent
 import Control.Monad
@@ -114,23 +116,25 @@ import System.FilePath
 import qualified Yi.Rope as Rope
 
 -- | Starts a new session.
-runSession :: String -- ^ The command to run the server.
+runSession :: (MonadIO m, MonadThrow m)
+           => String -- ^ The command to run the server.
            -> LSP.ClientCapabilities -- ^ The capabilities that the client should declare.
            -> FilePath -- ^ The filepath to the root directory for the session.
-           -> Session a -- ^ The session to run.
-           -> IO a
+           -> SessionT m a -- ^ The session to run.
+           -> m a
 runSession = runSessionWithConfig def
 
 -- | Starts a new sesion with a client with the specified capabilities.
-runSessionWithConfig :: SessionConfig -- ^ Configuration options for the session.
+runSessionWithConfig :: forall m a. (MonadIO m, MonadThrow m)
+                     => SessionConfig -- ^ Configuration options for the session.
                      -> String -- ^ The command to run the server.
                      -> LSP.ClientCapabilities -- ^ The capabilities that the client should declare.
                      -> FilePath -- ^ The filepath to the root directory for the session.
-                     -> Session a -- ^ The session to run.
-                     -> IO a
+                     -> SessionT m a -- ^ The session to run.
+                     -> m a
 runSessionWithConfig config serverExe caps rootDir session = do
-  pid <- getCurrentProcessID
-  absRootDir <- canonicalizePath rootDir
+  pid <- liftIO getCurrentProcessID
+  absRootDir <- liftIO $ canonicalizePath rootDir
 
   let initializeParams = InitializeParams (Just pid)
                                           (Just $ T.pack absRootDir)
@@ -142,7 +146,7 @@ runSessionWithConfig config serverExe caps rootDir session = do
     runSessionWithHandles serverIn serverOut listenServer config caps rootDir $ do
 
       -- Wrap the session around initialize and shutdown calls
-      initRspMsg <- sendRequest Initialize initializeParams :: Session InitializeResponse
+      initRspMsg <- sendRequest Initialize initializeParams :: SessionT m InitializeResponse
 
       liftIO $ maybe (return ()) (putStrLn . ("Error while initializing: " ++) . show ) (initRspMsg ^. LSP.error)
 
@@ -172,7 +176,7 @@ runSessionWithConfig config serverExe caps rootDir session = do
     listenServer serverOut context
 
 -- | The current text contents of a document.
-documentContents :: TextDocumentIdentifier -> Session T.Text
+documentContents :: MonadIO m => TextDocumentIdentifier -> SessionT m T.Text
 documentContents doc = do
   vfs <- vfs <$> get
   let file = vfs Map.! (doc ^. uri)
@@ -180,9 +184,9 @@ documentContents doc = do
 
 -- | Parses an ApplyEditRequest, checks that it is for the passed document
 -- and returns the new content
-getDocumentEdit :: TextDocumentIdentifier -> Session T.Text
+getDocumentEdit :: forall m. MonadIO m => TextDocumentIdentifier -> SessionT m T.Text
 getDocumentEdit doc = do
-  req <- message :: Session ApplyWorkspaceEditRequest
+  req <- message :: SessionT m ApplyWorkspaceEditRequest
 
   unless (checkDocumentChanges req || checkChanges req) $
     liftIO $ throw (IncorrectApplyEditRequest (show req))
@@ -203,23 +207,23 @@ getDocumentEdit doc = do
 
 -- | Sends a request to the server and waits for its response.
 -- @
--- rsp <- sendRequest TextDocumentDocumentSymbol params :: Session DocumentSymbolsResponse
+-- rsp <- sendRequest TextDocumentDocumentSymbol params :: SessionT m DocumentSymbolsResponse
 -- @
 -- Note: will skip any messages in between the request and the response.
-sendRequest :: (ToJSON params, FromJSON a) => ClientMethod -> params -> Session (ResponseMessage a)
+sendRequest :: (MonadIO m, ToJSON params, FromJSON a) => ClientMethod -> params -> SessionT m (ResponseMessage a)
 sendRequest m = sendRequest' m >=> skipManyTill anyMessage . responseForId
 
 -- | Send a request to the server and wait for its response,
 -- but discard it.
-sendRequest_ :: ToJSON params => ClientMethod -> params -> Session ()
-sendRequest_ p = void . (sendRequest p :: ToJSON params => params -> Session (ResponseMessage Value))
+sendRequest_ :: forall m params. (MonadIO m, ToJSON params) => ClientMethod -> params -> SessionT m ()
+sendRequest_ p = void . (sendRequest p :: ToJSON params => params -> SessionT m (ResponseMessage Value))
 
 -- | Sends a request to the server without waiting on the response.
 sendRequest'
-  :: ToJSON params
+  :: (ToJSON params, MonadIO m)
   => ClientMethod -- ^ The request method.
   -> params -- ^ The request parameters.
-  -> Session LspId -- ^ The id of the request that was sent.
+  -> SessionT m LspId -- ^ The id of the request that was sent.
 sendRequest' method params = do
   id <- curReqId <$> get
   modify $ \c -> c { curReqId = nextId id }
@@ -248,7 +252,7 @@ instance ToJSON a => ToJSON (RequestMessage' a) where
     object ["jsonrpc" .= rpc, "id" .= id, "method" .= method, "params" .= params]
 
 
-sendRequestMessage :: (ToJSON a, ToJSON b) => RequestMessage ClientMethod a b -> Session ()
+sendRequestMessage :: (MonadIO m, ToJSON a, ToJSON b) => RequestMessage ClientMethod a b -> SessionT m ()
 sendRequestMessage req = do
   -- Update the request map
   reqMap <- requestMap <$> ask
@@ -258,10 +262,10 @@ sendRequestMessage req = do
   sendMessage req
 
 -- | Sends a notification to the server.
-sendNotification :: ToJSON a
+sendNotification :: (MonadIO m, ToJSON a)
                  => ClientMethod -- ^ The notification method.
                  -> a -- ^ The notification parameters.
-                 -> Session ()
+                 -> SessionT m ()
 
 -- | Open a virtual file if we send a did open text document notification
 sendNotification TextDocumentDidOpen params = do
@@ -285,29 +289,30 @@ sendNotification TextDocumentDidClose params = do
 
 sendNotification method params = sendNotification' (NotificationMessage "2.0" method params)
 
-sendNotification' :: (ToJSON a, ToJSON b) => NotificationMessage a b -> Session ()
+sendNotification' :: (MonadIO m, ToJSON a, ToJSON b) => NotificationMessage a b -> SessionT m ()
 sendNotification' = sendMessage
 
-sendResponse :: ToJSON a => ResponseMessage a -> Session ()
+sendResponse :: (MonadIO m, ToJSON a) => ResponseMessage a -> SessionT m ()
 sendResponse = sendMessage
 
 -- | Returns the initialize response that was received from the server.
 -- The initialize requests and responses are not included the session,
 -- so if you need to test it use this.
-initializeResponse :: Session InitializeResponse
+initializeResponse :: MonadIO m => SessionT m InitializeResponse
 initializeResponse = initRsp <$> ask >>= (liftIO . readMVar)
 
 -- | Opens a text document and sends a notification to the client.
-openDoc :: FilePath -> String -> Session TextDocumentIdentifier
+openDoc :: MonadIO m => FilePath -> String -> SessionT m TextDocumentIdentifier
 openDoc file languageId = do
   item <- getDocItem file languageId
   sendNotification TextDocumentDidOpen (DidOpenTextDocumentParams item)
   TextDocumentIdentifier <$> getDocUri file
   where
   -- | Reads in a text document as the first version.
-  getDocItem :: FilePath -- ^ The path to the text document to read in.
-            -> String -- ^ The language ID, e.g "haskell" for .hs files.
-            -> Session TextDocumentItem
+  getDocItem :: MonadIO m
+             =>FilePath -- ^ The path to the text document to read in.
+             -> String -- ^ The language ID, e.g "haskell" for .hs files.
+             -> SessionT m TextDocumentItem
   getDocItem file languageId = do
     context <- ask
     let fp = rootDir context </> file
@@ -315,7 +320,7 @@ openDoc file languageId = do
     return $ TextDocumentItem (filePathToUri fp) (T.pack languageId) 0 contents
 
 -- | Closes a text document and sends a notification to the client.
-closeDoc :: TextDocumentIdentifier -> Session ()
+closeDoc :: MonadIO m => TextDocumentIdentifier -> SessionT m ()
 closeDoc docId = do
   let params = DidCloseTextDocumentParams (TextDocumentIdentifier (docId ^. uri))
   sendNotification TextDocumentDidClose params
@@ -325,21 +330,24 @@ closeDoc docId = do
   newVfs <- liftIO $ closeVFS oldVfs notif
   modify $ \s -> s { vfs = newVfs }
 
+getOpenDocs :: MonadIO m => SessionT m [TextDocumentIdentifier]
+getOpenDocs = map TextDocumentIdentifier . Map.keys . vfs <$> get
+
 -- | Gets the Uri for the file corrected to the session directory.
-getDocUri :: FilePath -> Session Uri
+getDocUri :: MonadIO m => FilePath -> SessionT m Uri
 getDocUri file = do
   context <- ask
   let fp = rootDir context </> file
   return $ filePathToUri fp
 
 -- | Waits for diagnostics to be published and returns them.
-waitForDiagnostics :: Session [Diagnostic]
+waitForDiagnostics :: forall m. MonadIO m => SessionT m [Diagnostic]
 waitForDiagnostics = do
-  diagsNot <- skipManyTill anyMessage message :: Session PublishDiagnosticsNotification
+  diagsNot <- skipManyTill anyMessage message :: SessionT m PublishDiagnosticsNotification
   let (List diags) = diagsNot ^. params . LSP.diagnostics
   return diags
 
-waitForDiagnosticsSource :: String -> Session [Diagnostic]
+waitForDiagnosticsSource :: MonadIO m => String -> SessionT m [Diagnostic]
 waitForDiagnosticsSource src = do
   diags <- waitForDiagnostics
   let res = filter matches diags
@@ -353,13 +361,13 @@ waitForDiagnosticsSource src = do
 -- | Expects a 'PublishDiagnosticsNotification' and throws an
 -- 'UnexpectedDiagnosticsException' if there are any diagnostics
 -- returned.
-noDiagnostics :: Session ()
+noDiagnostics :: forall m. MonadIO m => SessionT m ()
 noDiagnostics = do
-  diagsNot <- message :: Session PublishDiagnosticsNotification
+  diagsNot <- message :: SessionT m PublishDiagnosticsNotification
   when (diagsNot ^. params . LSP.diagnostics /= List []) $ liftIO $ throw UnexpectedDiagnostics
 
 -- | Returns the symbols in a document.
-getDocumentSymbols :: TextDocumentIdentifier -> Session [SymbolInformation]
+getDocumentSymbols :: MonadIO m => TextDocumentIdentifier -> SessionT m [SymbolInformation]
 getDocumentSymbols doc = do
   ResponseMessage _ rspLid mRes mErr <- sendRequest TextDocumentDocumentSymbol (DocumentSymbolParams doc)
   maybe (return ()) (throw . UnexpectedResponseError rspLid) mErr
@@ -369,7 +377,7 @@ getDocumentSymbols doc = do
 -- | Returns all the code actions in a document by 
 -- querying the code actions at each of the current 
 -- diagnostics' positions.
-getAllCodeActions :: TextDocumentIdentifier -> Session [CommandOrCodeAction]
+getAllCodeActions :: forall m. MonadIO m => TextDocumentIdentifier -> SessionT m [CommandOrCodeAction]
 getAllCodeActions doc = do
   curDiags <- fromMaybe [] . Map.lookup (doc ^. uri) . curDiagnostics <$> get
   let ctx = CodeActionContext (List curDiags) Nothing
@@ -377,7 +385,7 @@ getAllCodeActions doc = do
   foldM (go ctx) [] curDiags
 
   where
-    go :: CodeActionContext -> [CommandOrCodeAction] -> Diagnostic -> Session [CommandOrCodeAction]
+    go :: CodeActionContext -> [CommandOrCodeAction] -> Diagnostic -> SessionT m [CommandOrCodeAction]
     go ctx acc diag = do
       ResponseMessage _ rspLid mRes mErr <- sendRequest TextDocumentCodeAction (CodeActionParams doc (diag ^. range) ctx)
 
@@ -388,7 +396,7 @@ getAllCodeActions doc = do
             in return (acc ++ cmdOrCAs)
 
 -- | Executes a command.
-executeCommand :: Command -> Session ()
+executeCommand :: MonadIO m => Command -> SessionT m ()
 executeCommand cmd = do
   let args = decode $ encode $ fromJust $ cmd ^. arguments
       execParams = ExecuteCommandParams (cmd ^. command) args
@@ -398,19 +406,19 @@ executeCommand cmd = do
 -- Matching with the specification, if a code action
 -- contains both an edit and a command, the edit will
 -- be applied first.
-executeCodeAction :: CodeAction -> Session ()
+executeCodeAction :: forall m. MonadIO m => CodeAction -> SessionT m ()
 executeCodeAction action = do
   maybe (return ()) handleEdit $ action ^. edit
   maybe (return ()) executeCommand $ action ^. command
 
-  where handleEdit :: WorkspaceEdit -> Session ()
+  where handleEdit :: WorkspaceEdit -> SessionT m ()
         handleEdit e =
           -- Its ok to pass in dummy parameters here as they aren't used
           let req = RequestMessage "" (IdInt 0) WorkspaceApplyEdit (ApplyWorkspaceEditParams e)
             in updateState (ReqApplyWorkspaceEdit req)
 
 -- | Adds the current version to the document, as tracked by the session.
-getVersionedDoc :: TextDocumentIdentifier -> Session VersionedTextDocumentIdentifier
+getVersionedDoc :: MonadIO m => TextDocumentIdentifier -> SessionT m VersionedTextDocumentIdentifier
 getVersionedDoc (TextDocumentIdentifier uri) = do
   fs <- vfs <$> get
   let ver =
@@ -420,7 +428,7 @@ getVersionedDoc (TextDocumentIdentifier uri) = do
   return (VersionedTextDocumentIdentifier uri ver)
 
 -- | Applys an edit to the document and returns the updated document version.
-applyEdit :: TextDocumentIdentifier -> TextEdit -> Session VersionedTextDocumentIdentifier
+applyEdit :: MonadIO m => TextDocumentIdentifier -> TextEdit -> SessionT m VersionedTextDocumentIdentifier
 applyEdit doc edit = do
 
   verDoc <- getVersionedDoc doc
@@ -448,7 +456,7 @@ applyEdit doc edit = do
   getVersionedDoc doc
   
 -- | Returns the completions for the position in the document.
-getCompletions :: TextDocumentIdentifier -> Position -> Session [CompletionItem]
+getCompletions :: MonadIO m => TextDocumentIdentifier -> Position -> SessionT m [CompletionItem]
 getCompletions doc pos = do
   rsp <- sendRequest TextDocumentCompletion (TextDocumentPositionParams doc pos)
 
@@ -457,40 +465,42 @@ getCompletions doc pos = do
     CompletionList (CompletionListType _ (List items)) -> return items
 
 -- | Returns the references for the position in the document.
-getReferences :: TextDocumentIdentifier -- ^ The document to lookup in.
+getReferences :: MonadIO m
+              => TextDocumentIdentifier -- ^ The document to lookup in.
               -> Position -- ^ The position to lookup. 
               -> Bool -- ^ Whether to include declarations as references.
-              -> Session [Location] -- ^ The locations of the references.
+              -> SessionT m [Location] -- ^ The locations of the references.
 getReferences doc pos inclDecl =
   let ctx = ReferenceContext inclDecl
       params = ReferenceParams doc pos ctx
   in getResponseResult <$> sendRequest TextDocumentReferences params 
 
 -- | Returns the definition(s) for the term at the specified position.
-getDefinitions :: TextDocumentIdentifier -- ^ The document the term is in.
+getDefinitions :: MonadIO m
+               => TextDocumentIdentifier -- ^ The document the term is in.
                -> Position -- ^ The position the term is at.
-               -> Session [Location] -- ^ The location(s) of the definitions
+               -> SessionT m [Location] -- ^ The location(s) of the definitions
 getDefinitions doc pos =
   let params = TextDocumentPositionParams doc pos
   in getResponseResult <$> sendRequest TextDocumentDefinition params
 
 -- ^ Renames the term at the specified position.
-rename :: TextDocumentIdentifier -> Position -> String -> Session ()
+rename :: forall m. MonadIO m => TextDocumentIdentifier -> Position -> String -> SessionT m ()
 rename doc pos newName = do
   let params = RenameParams doc pos (T.pack newName)
-  rsp <- sendRequest TextDocumentRename params :: Session RenameResponse
+  rsp <- sendRequest TextDocumentRename params :: SessionT m RenameResponse
   let wEdit = getResponseResult rsp
       req = RequestMessage "" (IdInt 0) WorkspaceApplyEdit (ApplyWorkspaceEditParams wEdit)
   updateState (ReqApplyWorkspaceEdit req)
 
 -- | Returns the hover information at the specified position.
-getHover :: TextDocumentIdentifier -> Position -> Session (Maybe Hover)
+getHover :: MonadIO m => TextDocumentIdentifier -> Position -> SessionT m (Maybe Hover)
 getHover doc pos =
   let params = TextDocumentPositionParams doc pos
   in getResponseResult <$> sendRequest TextDocumentHover params
 
 -- | Returns the highlighted occurences of the term at the specified position
-getHighlights :: TextDocumentIdentifier -> Position -> Session [DocumentHighlight]
+getHighlights :: MonadIO m => TextDocumentIdentifier -> Position -> SessionT m [DocumentHighlight]
 getHighlights doc pos =
   let params = TextDocumentPositionParams doc pos
   in getResponseResult <$> sendRequest TextDocumentDocumentHighlight params
@@ -503,20 +513,20 @@ getResponseResult rsp = fromMaybe exc (rsp ^. result)
                                               (fromJust $ rsp ^. LSP.error)
 
 -- | Applies formatting to the specified document.
-formatDoc :: TextDocumentIdentifier -> FormattingOptions -> Session ()
+formatDoc :: MonadIO m => TextDocumentIdentifier -> FormattingOptions -> SessionT m ()
 formatDoc doc opts = do
   let params = DocumentFormattingParams doc opts
   edits <- getResponseResult <$> sendRequest TextDocumentFormatting params
   applyTextEdits doc edits
 
 -- | Applies formatting to the specified range in a document.
-formatRange :: TextDocumentIdentifier -> FormattingOptions -> Range -> Session ()
+formatRange :: MonadIO m => TextDocumentIdentifier -> FormattingOptions -> Range -> SessionT m ()
 formatRange doc opts range = do
   let params = DocumentRangeFormattingParams doc range opts
   edits <- getResponseResult <$> sendRequest TextDocumentRangeFormatting params
   applyTextEdits doc edits
 
-applyTextEdits :: TextDocumentIdentifier -> List TextEdit -> Session ()
+applyTextEdits :: MonadIO m => TextDocumentIdentifier -> List TextEdit -> SessionT m ()
 applyTextEdits doc edits =
   let wEdit = WorkspaceEdit (Just (HashMap.singleton (doc ^. uri) edits)) Nothing
       req = RequestMessage "" (IdInt 0) WorkspaceApplyEdit (ApplyWorkspaceEditParams wEdit)
