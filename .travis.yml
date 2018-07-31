@@ -43,5 +43,5 @@ before_install:
 script:
   - pwd
   - ls -a
-  - cabal new-configure
-  - cabal new-test -O2 -j2
+  - cabal configure --enable-tests
+  - cabal test -O2 -j2 --show-details=streaming
