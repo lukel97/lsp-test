@@ -40,6 +40,6 @@ before_install:
   - npm update
   - npm i -g javascript-typescript-langserver
 
-script:
-  - cabal new-configure
-  - cabal new-test -j1 -O2
+# script:
+#   - cabal new-configure
+#   - cabal new-test -j1 -O2
