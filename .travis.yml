@@ -44,4 +44,4 @@ script:
   - pwd
   - ls -a
   - cabal configure --enable-tests
-  - cabal test -O2 -j2 --show-details=streaming
+  - cabal test -j2 --show-details=streaming
