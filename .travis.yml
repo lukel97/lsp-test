@@ -1,16 +1,17 @@
-# language: haskell
-# ghc:
-#   - "8.2.2"
-#   - "8.4.2"
-language: c
+language: haskell
+ghc:
+  - "8.2.2"
+  - "8.4.2"
 
 sudo: false
 
 # Caching so the next build will be fast too.
 cache:
   directories:
-  - $HOME/.stack
-  - $HOME/haskell-ide-engine/.stack-work
+   - dist
+   - dist-newstyle
+  # - $HOME/.stack
+  # - $HOME/haskell-ide-engine/.stack-work
 
 addons:
   apt:
@@ -19,9 +20,9 @@ addons:
 
 before_install:
   # Download and unpack the stack executable
-  - mkdir -p ~/.local/bin
-  - export PATH=$HOME/.local/bin:$PATH
-  - travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+  # - mkdir -p ~/.local/bin
+  # - export PATH=$HOME/.local/bin:$PATH
+  # - travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
     
   - cd $HOME
   # It's ok to fail
@@ -32,17 +33,19 @@ before_install:
   - git submodule init
   - git submodule sync
   - git submodule update
-  # - cabal new-update
-  # - cabal new-configure
-  # - cabal new-build
+  - cabal new-update
+  - cabal new-configure
+  - cabal new-build
   # - export PATH=$HOME/haskell-ide-engine/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/x/hie/build:$PATH
-  - stack --no-terminal --skip-ghc-check install -j2
-  - stack exec hoogle generate
+  - cp `find dist-newstyle/ -name hie -type f | xargs -x ls -t | head -n1` $HOME/.cabal/bin/
+  # - stack --no-terminal --skip-ghc-check install -j2
+  # - stack exec hoogle generate
+  - cabal install hoogle
+  - hoogle generate
   - cd $TRAVIS_BUILD_DIR
   - npm update
   - npm i -g javascript-typescript-langserver
 
 script:
- - stack test
-  # - cabal configure --enable-tests
-  # - cabal test -j2 --show-details=streaming
+  - cabal configure --enable-tests --enable-coverage
+  - cabal test --show-details=streaming
