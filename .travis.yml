@@ -39,7 +39,7 @@ before_install:
   # - export PATH=$HOME/haskell-ide-engine/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/x/hie/build:$PATH
   # - stack --no-terminal --skip-ghc-check install -j2
   # - stack exec hoogle generate
-  - cabal install hoogle
+  - cabal install happy hoogle
   - hoogle generate
   - cd $TRAVIS_BUILD_DIR
   - npm update
