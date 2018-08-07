@@ -26,6 +26,7 @@ before_install:
     
   - cd $HOME
   # It's ok to fail
+  - mkdir -p haskell-ide-engine
   - cd haskell-ide-engine
   - git init
   - git remote add origin https://github.com/Bubba/haskell-ide-engine.git
