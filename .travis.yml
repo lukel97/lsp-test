@@ -19,9 +19,10 @@ addons:
     - hoogle
 
 before_install:
-  - cd $HOME
+  - printenv
+  # - cd $HOME
   - wget https://877-129435383-gh.circle-artifacts.com/0/bin/hie
-  - export PATH=$HOME:$PATH
+  - export PATH=$TRAVIS_BUILD_DIR:$PATH
   # - mkdir -p haskell-ide-engine
   # - cd haskell-ide-engine
   # - git init
@@ -33,15 +34,14 @@ before_install:
   # - cabal new-configure
   # - cabal new-build -j2
   # - export PATH=$HOME/haskell-ide-engine/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/c/hie/build/hie/hie:$PATH
-  - hoogle generate
-  - cd $TRAVIS_BUILD_DIR
   - npm update
   - npm i -g javascript-typescript-langserver
 
 script:
   - cabal configure --enable-tests --enable-coverage
   - cabal build
+  - hoogle generate
   - cabal test --show-details=streaming
 after_script:
-  - cabal install codecov-haskell --bindir=$HOME
-  - codecov-haskell
+  - cabal install codecov-haskell --bindir=$TRAVIS_BUILD_DIR
+  - ./codecov-haskell
