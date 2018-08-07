@@ -8,6 +8,8 @@ sudo: false
 # Caching so the next build will be fast too.
 cache:
   directories:
+  - dist
+  - dist-newstyle
   # - $HOME/.stack
   - $HOME/haskell-ide-engine/dist
   - $HOME/haskell-ide-engine/dist-newstyle
@@ -40,5 +42,5 @@ script:
   - cabal configure --enable-tests --enable-coverage
   - cabal test --show-details=streaming
 after_script:
-  - cabal install codecov-haskell --bindir=$TRAVIS_BUILD_DIR
+  - cabal install --bindir=$TRAVIS_BUILD_DIR https://github.com/eth-r/codecov-haskell/archive/master.tar.gz 
   - ./codecov-haskell
