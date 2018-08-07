@@ -48,3 +48,6 @@ script:
   - cabal configure --enable-tests --enable-coverage
   - cabal build
   - cabal test --show-details=streaming
+after_script:
+  - cabal install codecov-haskell
+  - codecov-haskell [options] tests
