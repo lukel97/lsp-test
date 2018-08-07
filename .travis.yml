@@ -33,7 +33,7 @@ before_install:
   - git submodule sync
   - git submodule update
   - cabal new-configure
-  - cabal new-build
+  - cabal new-build -j2
   # - export PATH=$HOME/haskell-ide-engine/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/x/hie/build:$PATH
   - cp `find dist-newstyle/ -name hie -type f | xargs -x ls -t | head -n1` $HOME/.cabal/bin/
   # - stack --no-terminal --skip-ghc-check install -j2
@@ -46,4 +46,5 @@ before_install:
 
 script:
   - cabal configure --enable-tests --enable-coverage
+  - cabal build
   - cabal test --show-details=streaming
