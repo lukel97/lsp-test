@@ -19,28 +19,20 @@ addons:
     - hoogle
 
 before_install:
-  # Download and unpack the stack executable
-  # - mkdir -p ~/.local/bin
-  # - export PATH=$HOME/.local/bin:$PATH
-  # - travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
-    
   - cd $HOME
-  # It's ok to fail
-  - mkdir -p haskell-ide-engine
-  - cd haskell-ide-engine
-  - git init
-  - git remote add origin https://github.com/Bubba/haskell-ide-engine.git
-  - git pull origin heirarchal-document-symbols
-  - git submodule init
-  - git submodule sync
-  - git submodule update
-  - cabal new-configure
-  - cabal new-build -j2
-  - export PATH=$HOME/haskell-ide-engine/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/c/hie/build/hie/hie:$PATH
-  # - export PATH=$HOME/haskell-ide-engine/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/x/hie/build:$PATH
-  # - stack --no-terminal --skip-ghc-check install -j2
-  # - stack exec hoogle generate
-  # - cabal install happy hoogle
+  - wget https://877-129435383-gh.circle-artifacts.com/0/bin/hie
+  - export PATH=$HOME:$PATH
+  # - mkdir -p haskell-ide-engine
+  # - cd haskell-ide-engine
+  # - git init
+  # - git remote add origin https://github.com/Bubba/haskell-ide-engine.git
+  # - git pull origin heirarchal-document-symbols
+  # - git submodule init
+  # - git submodule sync
+  # - git submodule update
+  # - cabal new-configure
+  # - cabal new-build -j2
+  # - export PATH=$HOME/haskell-ide-engine/dist-newstyle/build/*/ghc-*/haskell-ide-engine-*/c/hie/build/hie/hie:$PATH
   - hoogle generate
   - cd $TRAVIS_BUILD_DIR
   - npm update
@@ -51,5 +43,5 @@ script:
   - cabal build
   - cabal test --show-details=streaming
 after_script:
-  - cabal install codecov-haskell
-  - codecov-haskell [options] tests
+  - cabal install codecov-haskell --bindir=$HOME
+  - codecov-haskell
