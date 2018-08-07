@@ -19,9 +19,7 @@ addons:
     - hoogle
 
 before_install:
-  - printenv
-  # - cd $HOME
-  - wget https://877-129435383-gh.circle-artifacts.com/0/bin/hie
+  - sh .download-hie.sh
   - export PATH=$TRAVIS_BUILD_DIR:$PATH
   # - mkdir -p haskell-ide-engine
   # - cd haskell-ide-engine
