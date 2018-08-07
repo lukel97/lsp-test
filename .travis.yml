@@ -36,9 +36,8 @@ before_install:
   - npm i -g javascript-typescript-langserver
 
 script:
-  - cabal configure --enable-tests --enable-coverage
-  - cabal build
   - hoogle generate
+  - cabal configure --enable-tests --enable-coverage
   - cabal test --show-details=streaming
 after_script:
   - cabal install codecov-haskell --bindir=$TRAVIS_BUILD_DIR
