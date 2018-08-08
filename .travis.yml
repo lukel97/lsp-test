@@ -17,7 +17,6 @@ addons:
   apt:
     packages:
     - npm
-    - hoogle
 
 before_install:
   - printenv
@@ -38,6 +37,7 @@ before_install:
   - git submodule sync
   - git submodule update --init
   - stack --no-terminal install
+  - stack exec hoogle generate
   - cd $TRAVIS_BUILD_DIR
   - hie --version
   # - git submodule init
