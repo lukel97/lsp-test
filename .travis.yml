@@ -23,6 +23,7 @@ addons:
 before_install:
   - sh .download-hie.sh
   - export PATH=$TRAVIS_BUILD_DIR:$PATH
+  - hie version
   # - mkdir -p haskell-ide-engine
   # - cd haskell-ide-engine
   # - git init
@@ -39,8 +40,5 @@ before_install:
 
 script:
   - hoogle generate
-  - cabal configure --enable-tests --enable-coverage
-  - cabal test --show-details=streaming
-after_script:
-  - cabal install --bindir=$TRAVIS_BUILD_DIR https://github.com/eth-r/codecov-haskell/archive/master.tar.gz 
-  - ./codecov-haskell
+  # - cabal configure --enable-tests --enable-coverage
+  # - cabal test --show-details=streaming
