@@ -36,7 +36,7 @@ before_install:
   - git submodule init
   - git submodule sync
   - git submodule update --init
-  - stack --no-terminal --skip-ghc-check -j2 install
+  - stack --no-terminal --skip-ghc-check -j2 install --stack-yaml=stack-$TRAVIS_HASKELL_VERSION.yaml
   - stack exec hoogle generate
   - cd $TRAVIS_BUILD_DIR
   - hie --version
@@ -50,6 +50,5 @@ before_install:
   - npm i -g javascript-typescript-langserver
 
 script:
-  - hoogle generate
-  # - cabal configure --enable-tests --enable-coverage
-  # - cabal test --show-details=streaming
+  - cabal configure --enable-tests
+  - cabal test --show-details=streaming
