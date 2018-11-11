@@ -54,7 +54,7 @@ main = hspec $ do
           -- wait just a bit longer than 5 seconds so we have time
           -- to open the document
           in timeout 6000000 sesh `shouldThrow` anySessionException
-          
+
       it "doesn't time out" $
         let sesh = runSession "hie --lsp" fullCaps "test/data/renamePass" $ do
                     openDoc "Desktop/simple.hs" "haskell"
@@ -137,7 +137,10 @@ main = hspec $ do
 
         noDiagnostics
 
-        Right (fooSymbol:_) <- getDocumentSymbols doc
+        mfoosymbol <- getDocumentSymbols doc
+        fooSymbol <- case mfoosymbol of
+          Right (fooSymbol:_) -> return fooSymbol
+          _ -> fail "mfoosymbol `shouldBe` Right _"
 
         liftIO $ do
           fooSymbol ^. name `shouldBe` "foo"
@@ -184,7 +187,10 @@ main = hspec $ do
     it "works" $ runSession "hie" fullCaps "test/data/refactor" $ do
       doc <- openDoc "Main.hs" "haskell"
       waitForDiagnostics
-      [CACodeAction action] <- getCodeActions doc (Range (Position 1 14) (Position 1 18))
+      maction <- getCodeActions doc (Range (Position 1 14) (Position 1 18))
+      action <- case maction of
+        [CACodeAction action] -> return action
+        _ -> fail "Expecting [CACodeAction action]"
       liftIO $ action ^. title `shouldBe` "Apply hint:Redundant bracket"
 
   describe "getAllCodeActions" $
@@ -205,7 +211,10 @@ main = hspec $ do
 
       noDiagnostics
 
-      Left (mainSymbol:_) <- getDocumentSymbols doc
+      mmainsymbol <- getDocumentSymbols doc
+      mainSymbol <- case mmainsymbol of
+        Left (mainSymbol:_) -> return mainSymbol
+        _ -> fail "expecting Left (mainSymbol:_)"
 
       liftIO $ do
         mainSymbol ^. name `shouldBe` "main"
@@ -215,13 +224,19 @@ main = hspec $ do
   describe "applyEdit" $ do
     it "increments the version" $ runSession "hie --lsp" docChangesCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
-      VersionedTextDocumentIdentifier _ (Just oldVersion) <- getVersionedDoc doc
-      let edit = TextEdit (Range (Position 1 1) (Position 1 3)) "foo" 
-      VersionedTextDocumentIdentifier _ (Just newVersion) <- applyEdit doc edit
+      moldversion <- getVersionedDoc doc
+      oldVersion <- case moldversion of
+        VersionedTextDocumentIdentifier _ (Just oldVersion) -> return oldVersion
+        _ -> fail "Expected VersionedTextDocumentIdentifier _ (Just oldVersion)"
+      let edit = TextEdit (Range (Position 1 1) (Position 1 3)) "foo"
+      mnewVersion <- applyEdit doc edit
+      newVersion <- case mnewVersion of
+        VersionedTextDocumentIdentifier _ (Just newVersion) -> return newVersion
+        _ -> fail "Expecting VersionedTextDocumentIdentifier _ (Just newVersion)"
       liftIO $ newVersion `shouldBe` oldVersion + 1
     it "changes the document contents" $ runSession "hie --lsp" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
-      let edit = TextEdit (Range (Position 0 0) (Position 0 2)) "foo" 
+      let edit = TextEdit (Range (Position 0 0) (Position 0 2)) "foo"
       applyEdit doc edit
       contents <- documentContents doc
       liftIO $ contents `shouldSatisfy` T.isPrefixOf "foodule"
@@ -229,7 +244,10 @@ main = hspec $ do
   describe "getCompletions" $
     it "works" $ runSession "hie --lsp" def "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
-      item:_ <- getCompletions doc (Position 5 5)
+      mitem <- getCompletions doc (Position 5 5)
+      item <- case mitem of
+        item:_ -> return item
+        _ -> fail "Expecting getCompletions doc (Position 5 5)"
       liftIO $ do
         item ^. label `shouldBe` "interactWithUser"
         item ^. kind `shouldBe` Just CiFunction
@@ -257,7 +275,10 @@ main = hspec $ do
   describe "waitForDiagnosticsSource" $
     it "works" $ runSession "hie --lsp" fullCaps "test/data" $ do
       openDoc "Error.hs" "haskell"
-      [diag] <- waitForDiagnosticsSource "ghcmod"
+      mdiag <- waitForDiagnosticsSource "ghcmod"
+      diag <- case mdiag of
+        [diag] -> return diag
+        _ -> fail "Expecting waitForDiagnosticsSource \"ghcmod\""
       liftIO $ do
         diag ^. severity `shouldBe` Just DsError
         diag ^. source `shouldBe` Just "ghcmod"

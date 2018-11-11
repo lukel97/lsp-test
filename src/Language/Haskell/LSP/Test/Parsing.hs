@@ -137,7 +137,9 @@ loggingNotification = named "Logging notification" $ satisfy shouldSkip
 -- (textDocument/publishDiagnostics) notification.
 publishDiagnosticsNotification :: Session PublishDiagnosticsNotification
 publishDiagnosticsNotification = named "Publish diagnostics notification" $ do
-  NotPublishDiagnostics diags <- satisfy test
-  return diags
+  mdiags <- satisfy test
+  case mdiags of
+    NotPublishDiagnostics diags -> return diags
+    _ -> error "publishDiagnosticsNotification match fail"
   where test (NotPublishDiagnostics _) = True
         test _ = False
