@@ -1,0 +1,7 @@
+resolver: nightly-2018-11-13
+packages:
+  - .
+
+extra-deps:
+  - haskell-lsp-0.8.0.1
+  - haskell-lsp-types-0.8.0.1
