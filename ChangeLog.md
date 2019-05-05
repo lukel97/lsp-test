@@ -1,5 +1,10 @@
 # Revision history for lsp-test
 
+## 0.5.3.0 -- 2019-xx-xx
+
+* Use haskell-lsp-0.12.0.0, which uses rope-utf16-splay instead of
+  yi-rope
+
 ## 0.5.2.0 -- 2019-04-28
 
 * Add `satisfy` parser combinator
