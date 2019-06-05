@@ -26,8 +26,8 @@ before_install:
 - git pull origin master
 - git checkout abdb097f39e135deaf321a604c95f16cbda32678
 - git submodule update --init
-- cabal v2-install hie
-- cabal v2-run hoogle generate
+- cabal v2-install hie -j2
+- cabal v2-run -j2 hoogle generate
 - cd $TRAVIS_BUILD_DIR
 - npm update
 - npm i -g javascript-typescript-langserver
