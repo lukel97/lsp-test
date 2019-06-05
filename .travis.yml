@@ -36,7 +36,8 @@ before_install:
 install:
 - cabal v2-build
 script:
-- cabal v2-test
+    # - cabal v2-test-
+- cabal v2-run lsp-test:test:tests
 
 deploy:
   - provider: hackage
