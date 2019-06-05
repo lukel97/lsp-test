@@ -31,6 +31,7 @@ before_install:
 - cd $TRAVIS_BUILD_DIR
 - npm update
 - npm i -g javascript-typescript-langserver
+- export PATH=$HOME/.cabal/bin:$PATH
 
 install:
 - cabal v2-build
