@@ -19,6 +19,7 @@ addons:
     - npm
 
 before_install:
+- export PATH=$HOME/.cabal/bin:$PATH
 - mkdir -p haskell-ide-engine
 - cd $HOME/haskell-ide-engine
 - git init
@@ -27,12 +28,12 @@ before_install:
 - git checkout abdb097f39e135deaf321a604c95f16cbda32678
 - git submodule update --init
 - cabal v2-install hie -j2
-- cabal v2-run -j2 hoogle generate
-- cabal v2-install —lib Cabal
+- cabal v2-install hoogle -j2
+- hoogle generate
+- cabal v2-install --lib Cabal
 - cd $TRAVIS_BUILD_DIR
 - npm update
 - npm i -g javascript-typescript-langserver
-- export PATH=$HOME/.cabal/bin:$PATH
 
 install:
 - cabal v2-build
