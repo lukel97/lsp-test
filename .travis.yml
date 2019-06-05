@@ -28,6 +28,7 @@ before_install:
 - git submodule update --init
 - cabal v2-install hie -j2
 - cabal v2-run -j2 hoogle generate
+- cabal v2-install —lib Cabal
 - cd $TRAVIS_BUILD_DIR
 - npm update
 - npm i -g javascript-typescript-langserver
