@@ -28,8 +28,8 @@ before_install:
 - git pull origin master
 - git checkout abdb097f39e135deaf321a604c95f16cbda32678
 - git submodule update --init
-- cabal v2-install hie -j2
-- cabal v2-install hoogle -j2
+- cabal v2-install hie -j2 --overwrite-policy=always
+- cabal v2-install hoogle -j2 --overwrite-policy=always
 - hoogle generate
 - cd $TRAVIS_BUILD_DIR
 - cabal install Cabal --constraint "Cabal == 2.4.1.0"
