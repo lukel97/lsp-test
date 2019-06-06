@@ -32,7 +32,7 @@ before_install:
 - cabal v2-install hoogle -j2
 - hoogle generate
 - cd $TRAVIS_BUILD_DIR
-- cabal v2-install --lib Cabal --constraint "Cabal == 2.4.1.0"
+- cabal install Cabal --constraint "Cabal == 2.4.1.0"
 - npm update
 - npm i -g javascript-typescript-langserver
 
