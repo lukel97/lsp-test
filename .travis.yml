@@ -36,6 +36,9 @@ addons:
 
 before_install:
 - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ghc cabal nodejs; /C/ProgramData/chocolatey/bin/RefreshEnv.cmd; fi
+# these are taken from the haskell language setup
+- export PATH=/opt/ghc/8.6.5/bin:${PATH}
+- export PATH=/opt/cabal/2.4/bin:${PATH}
 - export PATH=$HOME/.cabal/bin:$PATH
 - mkdir -p $HOME/haskell-ide-engine
 - cd $HOME/haskell-ide-engine
