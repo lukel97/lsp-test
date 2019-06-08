@@ -27,26 +27,24 @@ import           System.Timeout
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 {-# ANN module ("HLint: ignore Unnecessary hiding" :: String) #-}
 
-config = defaultConfig { logStdErr = True }
-
 main = hspec $ do
   describe "Session" $ do
     it "fails a test" $
-      let session = runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+      let session = runSession "hie" fullCaps "test/data/renamePass" $ do
                       openDoc "Desktop/simple.hs" "haskell"
                       skipMany loggingNotification
                       anyRequest
         in session `shouldThrow` anySessionException
-    it "initializeResponse" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+    it "initializeResponse" $ runSession "hie" fullCaps "test/data/renamePass" $ do
       rsp <- initializeResponse
       liftIO $ rsp ^. result `shouldNotBe` Nothing
 
     it "runSessionWithConfig" $
-      runSessionWithConfig config "hie -d --vomit" didChangeCaps "test/data/renamePass" $ return ()
+      runSession "hie" didChangeCaps "test/data/renamePass" $ return ()
 
     describe "withTimeout" $ do
       it "times out" $
-        let sesh = runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+        let sesh = runSession "hie" fullCaps "test/data/renamePass" $ do
                     openDoc "Desktop/simple.hs" "haskell"
                     -- won't receive a request - will timeout
                     -- incoming logging requests shouldn't increase the
@@ -57,12 +55,12 @@ main = hspec $ do
           in timeout 6000000 sesh `shouldThrow` anySessionException
 
       it "doesn't time out" $
-        let sesh = runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+        let sesh = runSession "hie" fullCaps "test/data/renamePass" $ do
                     openDoc "Desktop/simple.hs" "haskell"
                     withTimeout 5 $ skipManyTill anyMessage publishDiagnosticsNotification
           in void $ timeout 6000000 sesh
 
-      it "further timeout messages are ignored" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+      it "further timeout messages are ignored" $ runSessionWithConfig (defaultConfig { logStdErr = True }) "hie -d --vomit" fullCaps "test/data/renamePass" $ do
         doc <- openDoc "Desktop/simple.hs" "haskell"
         waitForDiagnostics
         withTimeout 3 $ getDocumentSymbols doc
@@ -72,7 +70,7 @@ main = hspec $ do
 
       it "overrides global message timeout" $
         let sesh =
-              runSessionWithConfig (def { messageTimeout = 5 }) "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+              runSessionWithConfig (def { messageTimeout = 5 }) "hie" fullCaps "test/data/renamePass" $ do
                 doc <- openDoc "Desktop/simple.hs" "haskell"
                 -- shouldn't time out in here since we are overriding it
                 withTimeout 10 $ liftIO $ threadDelay 7000000
@@ -82,7 +80,7 @@ main = hspec $ do
 
       it "unoverrides global message timeout" $
         let sesh =
-              runSessionWithConfig (def { messageTimeout = 5 }) "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+              runSessionWithConfig (def { messageTimeout = 5 }) "hie" fullCaps "test/data/renamePass" $ do
                 doc <- openDoc "Desktop/simple.hs" "haskell"
                 -- shouldn't time out in here since we are overriding it
                 withTimeout 10 $ liftIO $ threadDelay 7000000
@@ -94,13 +92,13 @@ main = hspec $ do
 
     describe "SessionException" $ do
       it "throw on time out" $
-        let sesh = runSessionWithConfig (def {messageTimeout = 10}) "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+        let sesh = runSessionWithConfig (def {messageTimeout = 10}) "hie" fullCaps "test/data/renamePass" $ do
                 skipMany loggingNotification
                 _ <- message :: Session ApplyWorkspaceEditRequest
                 return ()
         in sesh `shouldThrow` anySessionException
 
-      it "don't throw when no time out" $ runSessionWithConfig (def {messageTimeout = 5}) "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+      it "don't throw when no time out" $ runSessionWithConfig (def {messageTimeout = 5}) "hie" fullCaps "test/data/renamePass" $ do
         loggingNotification
         liftIO $ threadDelay 10
         _ <- openDoc "Desktop/simple.hs" "haskell"
@@ -110,7 +108,7 @@ main = hspec $ do
         it "throws when there's an unexpected message" $
           let selector (UnexpectedMessage "Publish diagnostics notification" (NotLogMessage _)) = True
               selector _ = False
-            in runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" publishDiagnosticsNotification `shouldThrow` selector
+            in runSession "hie" fullCaps "test/data/renamePass" publishDiagnosticsNotification `shouldThrow` selector
         it "provides the correct types that were expected and received" $
           let selector (UnexpectedMessage "ResponseMessage WorkspaceEdit" (RspDocumentSymbols _)) = True
               selector _ = False
@@ -119,21 +117,21 @@ main = hspec $ do
                 sendRequest TextDocumentDocumentSymbol (DocumentSymbolParams doc)
                 skipMany anyNotification
                 message :: Session RenameResponse -- the wrong type
-            in runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" sesh
+            in runSession "hie" fullCaps "test/data/renamePass" sesh
               `shouldThrow` selector
 
   describe "replaySession" $
     -- This is too fickle at the moment
     -- it "passes a test" $
-    --   replaySession "hie -d --vomit" "test/data/renamePass"
+    --   replaySession "hie" "test/data/renamePass"
     it "fails a test" $
       let selector (ReplayOutOfOrder _ _) = True
           selector _ = False
-        in replaySession "hie -d --vomit" "test/data/renameFail" `shouldThrow` selector
+        in replaySession "hie" "test/data/renameFail" `shouldThrow` selector
 
   describe "manual javascript session" $
     it "passes a test" $
-      runSessionWithConfig config "javascript-typescript-stdio" fullCaps "test/data/javascriptPass" $ do
+      runSession "javascript-typescript-stdio" fullCaps "test/data/javascriptPass" $ do
         doc <- openDoc "test.js" "javascript"
 
         noDiagnostics
@@ -146,7 +144,7 @@ main = hspec $ do
 
   describe "text document VFS" $
     it "sends back didChange notifications" $
-      runSessionWithConfig config "hie -d --vomit" def "test/data/refactor" $ do
+      runSession "hie" def "test/data/refactor" $ do
         doc <- openDoc "Main.hs" "haskell"
 
         let args = toJSON $ AOP (doc ^. uri)
@@ -169,7 +167,7 @@ main = hspec $ do
 
   describe "getDocumentEdit" $
     it "automatically consumes applyedit requests" $
-      runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/refactor" $ do
+      runSession "hie" fullCaps "test/data/refactor" $ do
         doc <- openDoc "Main.hs" "haskell"
 
         let args = toJSON $ AOP (doc ^. uri)
@@ -182,14 +180,14 @@ main = hspec $ do
         noDiagnostics
 
   describe "getCodeActions" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/refactor" $ do
+    it "works" $ runSession "hie" fullCaps "test/data/refactor" $ do
       doc <- openDoc "Main.hs" "haskell"
       waitForDiagnostics
       [CACodeAction action] <- getCodeActions doc (Range (Position 1 14) (Position 1 18))
       liftIO $ action ^. title `shouldBe` "Apply hint:Redundant bracket"
 
   describe "getAllCodeActions" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/refactor" $ do
+    it "works" $ runSession "hie" fullCaps "test/data/refactor" $ do
       doc <- openDoc "Main.hs" "haskell"
       _ <- waitForDiagnostics
       actions <- getAllCodeActions doc
@@ -199,7 +197,7 @@ main = hspec $ do
         action ^. command . _Just . command `shouldSatisfy` T.isSuffixOf ":applyrefact:applyOne"
 
   describe "getDocumentSymbols" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
 
       skipMany loggingNotification
@@ -214,13 +212,13 @@ main = hspec $ do
         mainSymbol ^. range `shouldBe` Range (Position 3 0) (Position 5 30)
 
   describe "applyEdit" $ do
-    it "increments the version" $ runSessionWithConfig config "hie -d --vomit" docChangesCaps "test/data/renamePass" $ do
+    it "increments the version" $ runSession "hie" docChangesCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       VersionedTextDocumentIdentifier _ (Just oldVersion) <- getVersionedDoc doc
       let edit = TextEdit (Range (Position 1 1) (Position 1 3)) "foo"
       VersionedTextDocumentIdentifier _ (Just newVersion) <- applyEdit doc edit
       liftIO $ newVersion `shouldBe` oldVersion + 1
-    it "changes the document contents" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+    it "changes the document contents" $ runSession "hie" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       let edit = TextEdit (Range (Position 0 0) (Position 0 2)) "foo"
       applyEdit doc edit
@@ -228,7 +226,7 @@ main = hspec $ do
       liftIO $ contents `shouldSatisfy` T.isPrefixOf "foodule"
 
   describe "getCompletions" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" def "test/data/renamePass" $ do
+    it "works" $ runSession "hie" def "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
 
       -- wait for module to be loaded
@@ -243,7 +241,7 @@ main = hspec $ do
         item ^. detail `shouldBe` Just "Items -> IO ()\nMain"
 
   describe "getReferences" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       let pos = Position 40 3 -- interactWithUser
           uri = doc ^. LSP.uri
@@ -255,7 +253,7 @@ main = hspec $ do
         ]
 
   describe "getDefinitions" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       let pos = Position 49 25 -- addItem
       defs <- getDefinitions doc pos
@@ -269,7 +267,7 @@ main = hspec $ do
       liftIO $ defs `shouldBe` [Location (doc ^. uri) (mkRange 10 0 14 19)]  -- Type definition
 
   describe "waitForDiagnosticsSource" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data" $ do
+    it "works" $ runSession "hie" fullCaps "test/data" $ do
       openDoc "Error.hs" "haskell"
       [diag] <- waitForDiagnosticsSource "ghcmod"
       liftIO $ do
@@ -277,13 +275,13 @@ main = hspec $ do
         diag ^. source `shouldBe` Just "ghcmod"
 
   describe "rename" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data" $ do
+    it "works" $ runSession "hie" fullCaps "test/data" $ do
       doc <- openDoc "Rename.hs" "haskell"
       rename doc (Position 1 0) "bar"
       documentContents doc >>= liftIO . shouldBe "main = bar\nbar = return 42\n"
 
   describe "getHover" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       -- hover returns nothing until module is loaded
       skipManyTill loggingNotification $ count 2 noDiagnostics
@@ -291,21 +289,21 @@ main = hspec $ do
       liftIO $ hover `shouldSatisfy` isJust
 
   describe "getHighlights" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       skipManyTill loggingNotification $ count 2 noDiagnostics
       highlights <- getHighlights doc (Position 27 4) -- addItem
       liftIO $ length highlights `shouldBe` 4
 
   describe "formatDoc" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data" $ do
+    it "works" $ runSession "hie" fullCaps "test/data" $ do
       doc <- openDoc "Format.hs" "haskell"
       oldContents <- documentContents doc
       formatDoc doc (FormattingOptions 4 True)
       documentContents doc >>= liftIO . (`shouldNotBe` oldContents)
 
   describe "formatRange" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data" $ do
+    it "works" $ runSession "hie" fullCaps "test/data" $ do
       doc <- openDoc "Format.hs" "haskell"
       oldContents <- documentContents doc
       formatRange doc (FormattingOptions 4 True) (Range (Position 1 10) (Position 2 10))
@@ -314,7 +312,7 @@ main = hspec $ do
   describe "closeDoc" $
     it "works" $
       let sesh =
-            runSessionWithConfig config "hie -d --vomit" fullCaps "test/data" $ do
+            runSession "hie" fullCaps "test/data" $ do
               doc <- openDoc "Format.hs" "haskell"
               closeDoc doc
               -- need to evaluate to throw
@@ -322,7 +320,7 @@ main = hspec $ do
       in sesh `shouldThrow` anyException
 
   describe "satisfy" $
-    it "works" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data" $ do
+    it "works" $ runSession "hie" fullCaps "test/data" $ do
       openDoc "Format.hs" "haskell"
       let pred (NotLogMessage _) = True
           pred _ = False
