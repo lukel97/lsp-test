@@ -39,7 +39,7 @@ before_install:
 # these are taken from the haskell language setup
 - export PATH=/opt/ghc/8.6.5/bin:${PATH}
 - export PATH=/opt/cabal/2.4/bin:${PATH}
-- export PATH=$HOME/.cabal/bin:$PATH
+- export PATH=$HOME/.cabal/bin:${PATH}
 - mkdir -p $HOME/haskell-ide-engine
 - cd $HOME/haskell-ide-engine
 - git init
@@ -48,6 +48,7 @@ before_install:
 - git checkout abdb097f39e135deaf321a604c95f16cbda32678
 - git submodule update --init
 - cabal v2-update
+- ghc --version
 - cabal v2-install hie -j2 --overwrite-policy=always
 - cabal v2-install hoogle -j2 --overwrite-policy=always
 - hoogle generate
