@@ -1,16 +1,16 @@
-language: c
+language: haskell
 sudo: false
 
 os:
 - linux
 - osx
-- windows
+# - windows
 
 dist: xenial
 
-# ghc:
-# - 8.6.5
-# cabal: '2.4'
+ghc:
+- 8.6.5
+cabal: '2.4'
 
 cache:
   directories:
@@ -25,8 +25,8 @@ addons:
     - sourceline: ppa:hvr/ghc
     packages:
     - npm
-    - ghc-8.6.5
-    - cabal-install-2.4
+    # - ghc-8.6.5
+    # - cabal-install-2.4
   homebrew:
     packages:
     - ghc
@@ -35,14 +35,13 @@ addons:
     update: true
 
 before_install:
-- if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ghc; /C/ProgramData/chocolatey/bin/RefreshEnv.cmd; fi
-- ghc --version
+- if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ghc cabal nodejs; /C/ProgramData/chocolatey/bin/RefreshEnv.cmd; fi
 # these are taken from the haskell language setup
-- export PATH=/opt/ghc/8.6.5/bin:${PATH}
-- export PATH=/opt/cabal/2.4/bin:${PATH}
+# - export PATH=/opt/ghc/8.6.5/bin:${PATH}
+# - export PATH=/opt/cabal/2.4/bin:${PATH}
 - export PATH=$HOME/.cabal/bin:${PATH}
 - mkdir -p $HOME/haskell-ide-engine
-- cd $HOME/haskell-ide-engine
+- pushd $HOME/haskell-ide-engine
 - git init
 - git remote add origin https://github.com/haskell/haskell-ide-engine.git
 - git pull origin master
@@ -52,7 +51,8 @@ before_install:
 - cabal v2-install hie -j2 --overwrite-policy=always
 - cabal v2-install hoogle -j2 --overwrite-policy=always
 - hoogle generate
-- cd $TRAVIS_BUILD_DIR
+- popd
+# needs to be old-install for cabal-helper to find it
 - cabal install Cabal --constraint "Cabal == 2.4.1.0"
 - npm update
 - npm i -g javascript-typescript-langserver
@@ -60,6 +60,7 @@ before_install:
 install:
 - cabal v2-build
 script:
+# until cabal v2-test supports streaming results
 - cabal v2-run lsp-test:test:tests
 
 deploy:
