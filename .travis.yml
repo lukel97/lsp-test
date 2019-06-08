@@ -35,8 +35,7 @@ addons:
     update: true
 
 before_install:
-- if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ghc cabal nodejs; /C/ProgramData/chocolatey/bin/RefreshEnv.cmd; fi
-- cabal --version
+- if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ghc; /C/ProgramData/chocolatey/bin/RefreshEnv.cmd; fi
 - ghc --version
 # these are taken from the haskell language setup
 - export PATH=/opt/ghc/8.6.5/bin:${PATH}
