@@ -32,6 +32,7 @@ addons:
     - ghc
     - cabal-install
     - npm
+    update: true
 
 before_install:
 - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ghc cabal nodejs; /C/ProgramData/chocolatey/bin/RefreshEnv.cmd; fi
