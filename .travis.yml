@@ -1,6 +1,12 @@
 language: haskell
-dist: xenial
 sudo: false
+
+os:
+- linux
+- osx
+- windows
+
+dist: xenial
 
 ghc:
 - 8.6.5
@@ -12,7 +18,6 @@ cache:
   - "$HOME/.ghc"
   - "$HOME/haskell-ide-engine/dist-newstyle"
   - "dist-newstyle"
-  timeout: 1000
 
 addons:
   apt:
@@ -28,7 +33,6 @@ before_install:
 - git pull origin master
 - git checkout abdb097f39e135deaf321a604c95f16cbda32678
 - git submodule update --init
-- ls -a
 - cabal v2-install hie -j2 --overwrite-policy=always
 - cabal v2-install hoogle -j2 --overwrite-policy=always
 - hoogle generate
@@ -40,7 +44,6 @@ before_install:
 install:
 - cabal v2-build
 script:
-    # - cabal v2-test-
 - cabal v2-run lsp-test:test:tests
 
 deploy:
