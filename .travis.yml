@@ -21,13 +21,14 @@ addons:
 
 before_install:
 - export PATH=$HOME/.cabal/bin:$PATH
-- mkdir -p haskell-ide-engine
+- mkdir -p $HOME/haskell-ide-engine
 - cd $HOME/haskell-ide-engine
 - git init
 - git remote add origin https://github.com/haskell/haskell-ide-engine.git
 - git pull origin master
 - git checkout abdb097f39e135deaf321a604c95f16cbda32678
 - git submodule update --init
+- ls -a
 - cabal v2-install hie -j2 --overwrite-policy=always
 - cabal v2-install hoogle -j2 --overwrite-policy=always
 - hoogle generate

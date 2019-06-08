@@ -64,8 +64,8 @@ main = hspec $ do
 
       it "further timeout messages are ignored" $ runSessionWithConfig config "hie -d --vomit" fullCaps "test/data/renamePass" $ do
         doc <- openDoc "Desktop/simple.hs" "haskell"
+        waitForDiagnostics
         withTimeout 3 $ getDocumentSymbols doc
-        liftIO $ threadDelay 5000000
         -- shouldn't throw an exception
         getDocumentSymbols doc
         return ()
