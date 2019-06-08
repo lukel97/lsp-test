@@ -1,4 +1,4 @@
-language: haskell
+language: c
 sudo: false
 
 os:
@@ -8,9 +8,9 @@ os:
 
 dist: xenial
 
-ghc:
-- 8.6.5
-cabal: '2.4'
+# ghc:
+# - 8.6.5
+# cabal: '2.4'
 
 cache:
   directories:
@@ -21,10 +21,20 @@ cache:
 
 addons:
   apt:
+    sources:
+    - sourceline: ppa:hvr/ghc
     packages:
+    - npm
+    - ghc-8.6.5
+    - cabal-install-2.4
+  homebrew:
+    packages:
+    - ghc
+    - cabal-install
     - npm
 
 before_install:
+- if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ghc cabal nodejs; /C/ProgramData/chocolatey/bin/RefreshEnv.cmd; fi
 - export PATH=$HOME/.cabal/bin:$PATH
 - mkdir -p $HOME/haskell-ide-engine
 - cd $HOME/haskell-ide-engine
