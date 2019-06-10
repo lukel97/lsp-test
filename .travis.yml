@@ -56,7 +56,7 @@ before_install:
 - export PATH=$HOME/.cabal/bin:${PATH}
 - npm update
 - npm i -g javascript-typescript-langserver
-- ls /Users/travis/AppData/Roaming/npm/
+- ls /C/Users/travis/AppData/Roaming/npm/
 - javascript-typescript-stdio --version
 - mkdir -p $HOME/haskell-ide-engine
 - pushd $HOME/haskell-ide-engine
