@@ -146,9 +146,11 @@ main = hspec $ do
           fooSymbol ^. name `shouldBe` "foo"
           fooSymbol ^. kind `shouldBe` SkFunction
 
+  let cfg = defaultConfig { logStdErr = True, logMessages = True }
+
   describe "text document VFS" $
     it "sends back didChange notifications" $
-      runSession "hie" def "test/data/refactor" $ do
+      runSessionWithConfig cfg "hie -d --vomit" def "test/data/refactor" $ do
         doc <- openDoc "Main.hs" "haskell"
 
         let args = toJSON $ AOP (doc ^. uri)
@@ -171,7 +173,7 @@ main = hspec $ do
 
   describe "getDocumentEdit" $
     it "automatically consumes applyedit requests" $
-      runSession "hie" fullCaps "test/data/refactor" $ do
+      runSessionWithConfig cfg "hie -d --vomit" fullCaps "test/data/refactor" $ do
         doc <- openDoc "Main.hs" "haskell"
 
         let args = toJSON $ AOP (doc ^. uri)
@@ -201,7 +203,7 @@ main = hspec $ do
         action ^. command . _Just . command `shouldSatisfy` T.isSuffixOf ":applyrefact:applyOne"
 
   describe "getDocumentSymbols" $
-    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSessionWithConfig cfg "hie -d --vomit" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
 
       skipMany loggingNotification
@@ -285,7 +287,7 @@ main = hspec $ do
       documentContents doc >>= liftIO . shouldBe "main = bar\nbar = return 42\n"
 
   describe "getHover" $
-    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSessionWithConfig cfg "hie -d --vomit" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       -- hover returns nothing until module is loaded
       skipManyTill loggingNotification $ count 2 noDiagnostics
@@ -293,7 +295,7 @@ main = hspec $ do
       liftIO $ hover `shouldSatisfy` isJust
 
   describe "getHighlights" $
-    it "works" $ runSession "hie" fullCaps "test/data/renamePass" $ do
+    it "works" $ runSessionWithConfig cfg "hie -d --vomit" fullCaps "test/data/renamePass" $ do
       doc <- openDoc "Desktop/simple.hs" "haskell"
       skipManyTill loggingNotification $ count 2 noDiagnostics
       highlights <- getHighlights doc (Position 27 4) -- addItem
