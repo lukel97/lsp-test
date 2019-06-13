@@ -1,5 +1,13 @@
 # Revision history for lsp-test
 
+## 0.5.3.0 -- 2019-06-13
+
+* Update to haskell-lsp-0.14.0.0 (@cocreature)
+* Support `TextDocumentDidChange` (@cocreature)
+* Add non-file based `openDoc` (@cocreature)
+* Fix `getDefinitions` for `SingleLoc` (@cocreature)
+* Add `getCodeLenses` (@cocreature)
+
 ## 0.5.2.0 -- 2019-04-28
 
 * Add `satisfy` parser combinator
