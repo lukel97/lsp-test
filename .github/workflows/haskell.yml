@@ -9,10 +9,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Install dependencies
-      run: cabal install --only-dependencies --enable-tests
     - name: Install HIE
       run: |
+        apt upgrade ghc cabal-install
         pushd $HOME
         git clone https://github.com/haskell/haskell-ide-engine --recurse-submodules
         cd haskell-ide-engine
