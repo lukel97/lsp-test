@@ -28,5 +28,7 @@ jobs:
       run: cabal build
     - name: Run tests
       run: |
+        export PATH=$PATH:$HOME/.cabal/bin
         echo $PATH
+        which hie
         cabal test
