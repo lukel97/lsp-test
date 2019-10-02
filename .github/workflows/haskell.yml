@@ -21,6 +21,7 @@ jobs:
         cd haskell-ide-engine
         cabal install hie
         cabal install hoogle
+        export PATH=$PATH:$HOME/.cabal/bin
         hoogle generate
         popd
     - name: Build
