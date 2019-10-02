@@ -3,30 +3,26 @@ name: Haskell CI
 on: [push]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: domdere/haskell-lint-action@v1.0.2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
   build:
    
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v1
+    - uses: actions/setup-haskell@v1
+      with:
+        ghc-version: '8.6.5'
+        cabal-version: '3.0'
     - name: Install HIE
       run: |
-        apt upgrade ghc cabal-install
         pushd $HOME
         git clone https://github.com/haskell/haskell-ide-engine --recurse-submodules
         cd haskell-ide-engine
-        cabal v2-install hie
-        cabal v2-install hoogle
+        cabal install hie
+        cabal install hoogle
         hoogle generate
         popd
     - name: Build
-      run: cabal v2-build
+      run: cabal build
     - name: Run tests
-      run: cabal v2-test
+      run: cabal test
