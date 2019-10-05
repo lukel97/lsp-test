@@ -24,6 +24,8 @@ jobs:
         export PATH=$PATH:$HOME/.cabal/bin
         hoogle generate
         popd
+    - name: Install JS Language Server
+      run: npm install javascript-typescript-langserver
     - name: Build
       run: cabal build
     - name: Test
