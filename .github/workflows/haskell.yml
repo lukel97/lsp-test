@@ -26,9 +26,7 @@ jobs:
         popd
     - name: Build
       run: cabal build
-    - name: Run tests
+    - name: Test
       run: |
         export PATH=$PATH:$HOME/.cabal/bin
-        echo $PATH
-        which hie
         cabal test
