@@ -31,5 +31,5 @@ jobs:
       run: cabal build
     - name: Test
       run: |
-        export PATH=$PATH:$HOME/.cabal/bin
+        export PATH=$PATH:$HOME/.cabal/bin:$(npm bin) 
         cabal test
