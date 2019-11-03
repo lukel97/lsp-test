@@ -17,9 +17,8 @@ jobs:
     - name: Install HIE
       run: |
         pushd $HOME
-        git clone https://github.com/mpickering/haskell-ide-engine --recurse-submodules
+        git clone https://github.com/haskell/haskell-ide-engine --recurse-submodules
         cd haskell-ide-engine
-        git checkout hie-bios
         cabal install hie
         cabal install hoogle
         export PATH=$PATH:$HOME/.cabal/bin
