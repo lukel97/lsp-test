@@ -1,7 +1,9 @@
+{-# LANGUAGE PartialTypeSignatures #-}
 -- | A testing tool for replaying captured client logs back to a server,
 -- and validating that the server output matches up with another log.
 module Language.Haskell.LSP.Test.Replay
   ( replaySession
+  , evalSession
   )
 where
 
@@ -30,14 +32,29 @@ import           Language.Haskell.LSP.Test.Messages
 import           Language.Haskell.LSP.Test.Server
 import           Language.Haskell.LSP.Test.Session
 
+-- | Send the messages to the server and then wait for it to finish. Like replaySession but the
+-- responses are not checked at all to test that the correct answers are sent back. This is useful
+-- for stress testing and other debugging.
+evalSession :: String -> FilePath -> IO ()
+evalSession serverExe sessionDir = do
+  let sender = mapM_ (handleClientMessage sendRequestMessage sendMessage sendMessage)
+      listen _ rm h _ =
+        forever $ getNextMessage h >>= print . decodeFromServerMsg rm
+  replaySessionX listen sender serverExe sessionDir
+  return ()
+
+type ListenServer = [FromServerMessage] -> RequestMap -> Handle -> SessionContext -> IO ()
+type MessageSender = [FromClientMessage] -> Session ()
+
 -- | Replays a captured client output and
 -- makes sure it matches up with an expected response.
 -- The session directory should have a captured session file in it
 -- named "session.log".
-replaySession :: String -- ^ The command to run the server.
+replaySessionX :: ListenServer -> MessageSender
+              -> String -- ^ The command to run the server.
               -> FilePath -- ^ The recorded session directory.
               -> IO ()
-replaySession serverExe sessionDir = do
+replaySessionX listen send serverExe sessionDir = do
 
   entries <- B.lines <$> B.readFile (sessionDir </> "session.log")
 
@@ -55,20 +72,16 @@ replaySession serverExe sessionDir = do
         serverMsgs = filter (not . shouldSkip) $ map (\(FromServer _ msg) -> msg) serverEvents
         requestMap = getRequestMap clientMsgs
 
-    reqSema <- newEmptyMVar
-    rspSema <- newEmptyMVar
-    passSema <- newEmptyMVar
-    mainThread <- myThreadId
 
     sessionThread <- liftIO $ forkIO $
       runSessionWithHandles serverIn serverOut serverProc
-                            (listenServer serverMsgs requestMap reqSema rspSema passSema mainThread)
+                            (listen serverMsgs requestMap)
                             def
                             fullCaps
                             sessionDir
                             (return ()) -- No finalizer cleanup
-                            (sendMessages clientMsgs reqSema rspSema)
-    takeMVar passSema
+                            (send clientMsgs)
+
     killThread sessionThread
 
   where
@@ -78,14 +91,26 @@ replaySession serverExe sessionDir = do
     isServerMsg (FromServer _ _) = True
     isServerMsg _                = False
 
-sendMessages :: [FromClientMessage] -> MVar LspId -> MVar LspIdRsp -> Session ()
-sendMessages [] _ _ = return ()
-sendMessages (nextMsg:remainingMsgs) reqSema rspSema =
+
+replaySession serverExe dir = do
+  reqSema <- newEmptyMVar
+  rspSema <- newEmptyMVar
+  passSema <- newEmptyMVar
+  mainThread <- myThreadId
+  replaySessionX (listenServer reqSema rspSema passSema mainThread) (sendMessages reqSema rspSema) serverExe dir
+  takeMVar passSema
+
+
+
+sendMessages ::  MVar LspId -> MVar LspIdRsp -> [FromClientMessage] -> Session ()
+sendMessages _ _ [] = return ()
+sendMessages  reqSema rspSema  (nextMsg:remainingMsgs) =
   handleClientMessage request response notification nextMsg
  where
   -- TODO: May need to prevent premature exit notification being sent
   notification msg@(NotificationMessage _ Exit _) = do
     liftIO $ putStrLn "Will send exit notification soon"
+    -- 10s delay
     liftIO $ threadDelay 10000000
     sendMessage msg
 
@@ -96,7 +121,7 @@ sendMessages (nextMsg:remainingMsgs) reqSema rspSema =
 
     liftIO $ putStrLn $ "Sent a notification " ++ show m
 
-    sendMessages remainingMsgs reqSema rspSema
+    sendMessages reqSema rspSema remainingMsgs
 
   request msg@(RequestMessage _ id m _) = do
     sendRequestMessage msg
@@ -106,7 +131,7 @@ sendMessages (nextMsg:remainingMsgs) reqSema rspSema =
     when (responseId id /= rsp) $
       error $ "Expected id " ++ show id ++ ", got " ++ show rsp
 
-    sendMessages remainingMsgs reqSema rspSema
+    sendMessages reqSema rspSema remainingMsgs
 
   response msg@(ResponseMessage _ id _ _) = do
     liftIO $ putStrLn $ "Waiting for request id " ++ show id ++ " from the server"
@@ -117,7 +142,7 @@ sendMessages (nextMsg:remainingMsgs) reqSema rspSema =
         sendResponse msg
         liftIO $ putStrLn $ "Sent response to request id " ++ show id
 
-    sendMessages remainingMsgs reqSema rspSema
+    sendMessages reqSema rspSema remainingMsgs
 
 sendRequestMessage :: (ToJSON a, ToJSON b) => RequestMessage ClientMethod a b -> Session ()
 sendRequestMessage req = do
@@ -136,17 +161,17 @@ isNotification (NotShowMessage             _) = True
 isNotification (NotCancelRequestFromServer _) = True
 isNotification _                              = False
 
-listenServer :: [FromServerMessage]
-             -> RequestMap
-             -> MVar LspId
+listenServer :: MVar LspId
              -> MVar LspIdRsp
              -> MVar ()
              -> ThreadId
+             -> [FromServerMessage]
+             -> RequestMap
              -> Handle
              -> SessionContext
              -> IO ()
-listenServer [] _ _ _ passSema _ _ _ = putMVar passSema ()
-listenServer expectedMsgs reqMap reqSema rspSema passSema mainThreadId serverOut ctx = do
+listenServer _ _ passSema _ [] _ _ _  = putMVar passSema ()
+listenServer reqSema rspSema passSema mainThreadId  expectedMsgs reqMap serverOut ctx = do
 
   msgBytes <- getNextMessage serverOut
   let msg = decodeFromServerMsg reqMap msgBytes
@@ -154,9 +179,9 @@ listenServer expectedMsgs reqMap reqSema rspSema passSema mainThreadId serverOut
   handleServerMessage request response notification msg
 
   if shouldSkip msg
-    then listenServer expectedMsgs reqMap reqSema rspSema passSema mainThreadId serverOut ctx
+    then listenServer reqSema rspSema passSema mainThreadId expectedMsgs reqMap serverOut ctx
     else if inRightOrder msg expectedMsgs
-      then listenServer (delete msg expectedMsgs) reqMap reqSema rspSema passSema mainThreadId serverOut ctx
+      then listenServer reqSema rspSema passSema mainThreadId (delete msg expectedMsgs) reqMap serverOut ctx
       else let remainingMsgs = takeWhile (not . isNotification) expectedMsgs
                 ++ [head $ dropWhile isNotification expectedMsgs]
                exc = ReplayOutOfOrder msg remainingMsgs
