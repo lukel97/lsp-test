@@ -38,7 +38,7 @@ jobs:
 
     - name: Build HIE
       run: |
-        if [ ! -f $HOME/.cabal/bin/hie ]; then
+        if [ -e $HOME/.cabal/bin/hie ]; then
             echo "hie is already built"
             exit 0
         fi
