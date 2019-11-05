@@ -40,21 +40,23 @@ evalSession serverExe sessionDir = do
   let sender = mapM_ (handleClientMessage sendRequestMessage sendMessage sendMessage)
       listen _ rm h _ =
         forever $ getNextMessage h >>= print . decodeFromServerMsg rm
-  replaySessionX listen sender serverExe sessionDir
-  return ()
+  replaySessionX listen sender (\_ -> return ()) serverExe sessionDir
 
 type ListenServer = [FromServerMessage] -> RequestMap -> Handle -> SessionContext -> IO ()
 type MessageSender = [FromClientMessage] -> Session ()
+type Finaliser = ThreadId -> IO ()
 
 -- | Replays a captured client output and
 -- makes sure it matches up with an expected response.
 -- The session directory should have a captured session file in it
 -- named "session.log".
-replaySessionX :: ListenServer -> MessageSender
+replaySessionX :: ListenServer
+              -> MessageSender
+              -> Finaliser
               -> String -- ^ The command to run the server.
               -> FilePath -- ^ The recorded session directory.
               -> IO ()
-replaySessionX listen send serverExe sessionDir = do
+replaySessionX listen send final serverExe sessionDir = do
 
   entries <- B.lines <$> B.readFile (sessionDir </> "session.log")
 
@@ -81,8 +83,8 @@ replaySessionX listen send serverExe sessionDir = do
                             sessionDir
                             (return ()) -- No finalizer cleanup
                             (send clientMsgs)
+    final sessionThread
 
-    killThread sessionThread
 
   where
     isClientMsg (FromClient _ _) = True
@@ -97,8 +99,11 @@ replaySession serverExe dir = do
   rspSema <- newEmptyMVar
   passSema <- newEmptyMVar
   mainThread <- myThreadId
-  replaySessionX (listenServer reqSema rspSema passSema mainThread) (sendMessages reqSema rspSema) serverExe dir
-  takeMVar passSema
+  replaySessionX (listenServer reqSema rspSema passSema mainThread)
+                 (sendMessages reqSema rspSema)
+                 (\sessionThread -> takeMVar passSema >> killThread sessionThread)
+                 serverExe
+                 dir
 
 
 
