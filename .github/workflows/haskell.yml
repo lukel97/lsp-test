@@ -30,10 +30,10 @@ jobs:
         ref: ${{ env.hieref }}
         path: haskell-ide-engine
 
-    - name: Cache cabal
+    - name: Cache Cabal binaries
       uses: actions/cache@v1
       with:
-        path: $HOME/.cabal
+        path: $HOME/.cabal/bin
         key: ${{ runner.OS }}-${{ matrix.ghc }}-${{ env.hieref }}
 
     - name: Build HIE
