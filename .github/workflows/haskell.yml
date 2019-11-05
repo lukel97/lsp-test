@@ -28,7 +28,7 @@ jobs:
         repository: haskell/haskell-ide-engine
         submodules: recurse
         ref: ${{ env.hieref }}
-        path: haskell-ide-engine
+        path: $HOME/haskell-ide-engine
 
     - name: Cache Cabal binaries
       uses: actions/cache@v1
@@ -42,10 +42,9 @@ jobs:
             echo "hie is already built"
             exit 0
         fi
-        pushd haskell-ide-engine
+        pushd $HOME/haskell-ide-engine
         cabal install hie
         cabal install hoogle
-        export PATH=$PATH:$HOME/.cabal/bin
         hoogle generate
         popd
     - name: Install JS Language Server
