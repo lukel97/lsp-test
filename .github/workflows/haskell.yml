@@ -33,7 +33,7 @@ jobs:
     - name: Cache HIE
       uses: actions/cache@v1
       with:
-        path: haskell-ide-engine/dist-newstyle
+        path: ../haskell-ide-engine/dist-newstyle
         key: ${{ runner.OS }}-${{ matrix.ghc }}-${{ env.hieref }}
 
     - name: Build HIE
@@ -52,7 +52,7 @@ jobs:
       run: npm install javascript-typescript-langserver
     - name: Build
       run: cabal build
-    - name: Test
-      run: |
-        export PATH=$PATH:$HOME/.cabal/bin:$(npm bin) 
-        cabal run lsp-test:test:tests
+    # - name: Test
+    #   run: |
+    #     export PATH=$PATH:$HOME/.cabal/bin:$(npm bin) 
+    #     cabal run lsp-test:test:tests
