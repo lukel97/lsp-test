@@ -47,6 +47,7 @@ jobs:
         cabal install hoogle
         hoogle generate
         popd
+        cabal v1-install Cabal --constraint "Cabal == 3.0.0.0"
     - name: Install JS Language Server
       run: npm install javascript-typescript-langserver
     - name: Build
