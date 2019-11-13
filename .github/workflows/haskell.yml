@@ -34,7 +34,9 @@ jobs:
       uses: actions/cache@v1
       with:
         path: ~/.cabal
-        key: ${{ runner.OS }}-${{ matrix.ghc }}-cabal
+        key: ${{ runner.OS }}-${{ matrix.ghc }}-cabal-${{ hashFiles('../**/*.cabal') }}
+        restore-keys: |
+          ${{ runner.OS }}-${{ matrix.ghc }}-cabal
 
     - name: Build HIE
       run: |
