@@ -52,8 +52,8 @@ jobs:
       run: npm install javascript-typescript-langserver
     - name: Build
       run: cabal build
-    # - name: Test
-    #   run: |
-    #     echo $PATH
-    #     export PATH=$PATH:$(npm bin) 
-    #     cabal run lsp-test:test:tests
+    - name: Test
+      run: |
+        echo $PATH
+        export PATH=$PATH:$(npm bin) 
+        cabal run lsp-test:test:tests
