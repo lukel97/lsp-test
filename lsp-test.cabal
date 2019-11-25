@@ -1,5 +1,5 @@
 name:                lsp-test
-version:             0.8.0.0
+version:             0.8.2.0
 synopsis:            Functional test framework for LSP servers.
 description:
   A test framework for writing tests against
@@ -36,7 +36,7 @@ library
                      , parser-combinators:Control.Applicative.Combinators
   default-language:    Haskell2010
   build-depends:       base >= 4.10 && < 5
-                     , haskell-lsp == 0.17.*
+                     , haskell-lsp == 0.18.*
                      , aeson
                      , aeson-pretty
                      , ansi-terminal
@@ -44,7 +44,7 @@ library
                      , bytestring
                      , conduit
                      , conduit-parse == 0.2.*
-                     , containers
+                     , containers >= 0.5.9
                      , data-default
                      , Diff
                      , directory
@@ -79,7 +79,7 @@ test-suite tests
   build-depends:       base >= 4.10 && < 5
                      , hspec
                      , lens
-                     , haskell-lsp == 0.17.*
+                     , haskell-lsp == 0.18.*
                      , lsp-test
                      , data-default
                      , aeson
