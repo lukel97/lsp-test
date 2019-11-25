@@ -30,13 +30,13 @@ jobs:
         ref: ${{ env.hieref }}
         path: haskell-ide-engine
 
-    - name: Cache Cabal
-      uses: actions/cache@v1
-      with:
-        path: ~/.cabal
-        key: ${{ runner.OS }}-${{ matrix.ghc }}-cabal-${{ hashFiles('../**/*.cabal') }}
-        restore-keys: |
-          ${{ runner.OS }}-${{ matrix.ghc }}-cabal
+    # - name: Cache Cabal
+    #   uses: actions/cache@v1
+    #   with:
+    #     path: ~/.cabal
+    #     key: ${{ runner.OS }}-${{ matrix.ghc }}-cabal-${{ hashFiles('../**/*.cabal') }}
+    #     restore-keys: |
+    #       ${{ runner.OS }}-${{ matrix.ghc }}-cabal
 
     - name: Build HIE
       run: |
@@ -49,13 +49,13 @@ jobs:
         cabal install hoogle
         hoogle generate
         popd
-        cabal v1-install Cabal --constraint "Cabal == 3.0.0.0"
+        # cabal v1-install Cabal --constraint "Cabal == 3.0.0.0"
     - name: Install JS Language Server
       run: npm install javascript-typescript-langserver
     - name: Build
       run: cabal build
-    # - name: Test
-    #   run: |
-    #     echo $PATH
-    #     export PATH=$PATH:$(npm bin) 
-    #     cabal run lsp-test:test:tests
+    - name: Test
+      run: |
+        echo $PATH
+        export PATH=$PATH:$(npm bin) 
+        cabal run lsp-test:test:tests
