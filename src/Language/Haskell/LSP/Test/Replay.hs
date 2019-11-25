@@ -1,4 +1,6 @@
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | A testing tool for replaying captured client logs back to a server,
 -- and validating that the server output matches up with another log.
 module Language.Haskell.LSP.Test.Replay
@@ -37,7 +39,9 @@ import           Language.Haskell.LSP.Test.Session
 -- for stress testing and other debugging.
 evalSession :: String -> FilePath -> IO ()
 evalSession serverExe sessionDir = do
-  let sender = mapM_ (handleClientMessage sendRequestMessage sendMessage sendMessage)
+  let sender = mapM_ (handleClientMessage sendRequestMessage sendMessage sendNot)
+      sendNot msg@(NotificationMessage _ Exit _) = sendMessage msg >> liftIO (threadDelay 10_000_000) >> error "done"
+      sendNot n = sendMessage n
       listen _ rm h _ =
         forever $ getNextMessage h >>= print . decodeFromServerMsg rm
   replaySessionX listen sender (\_ -> return ()) serverExe sessionDir
@@ -46,10 +50,8 @@ type ListenServer = [FromServerMessage] -> RequestMap -> Handle -> SessionContex
 type MessageSender = [FromClientMessage] -> Session ()
 type Finaliser = ThreadId -> IO ()
 
--- | Replays a captured client output and
--- makes sure it matches up with an expected response.
--- The session directory should have a captured session file in it
--- named "session.log".
+-- | Generalised version of runSession which allows the specification of
+-- different event sending and recieving behaviour.
 replaySessionX :: ListenServer
               -> MessageSender
               -> Finaliser
@@ -93,7 +95,10 @@ replaySessionX listen send final serverExe sessionDir = do
     isServerMsg (FromServer _ _) = True
     isServerMsg _                = False
 
-
+-- | Replays a captured client output and
+-- makes sure it matches up with an expected response.
+-- The session directory should have a captured session file in it
+-- named "session.log".
 replaySession serverExe dir = do
   reqSema <- newEmptyMVar
   rspSema <- newEmptyMVar

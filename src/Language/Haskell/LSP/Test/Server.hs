@@ -18,5 +18,5 @@ withServer serverExe logStdErr f = do
     hSetBuffering serverErr NoBuffering
     hSetBinaryMode serverErr True
     let errSinkThread = forever $ hGetLine serverErr >>= when logStdErr . putStrLn
-    withAsync errSinkThread $ \_ -> do
+    withAsync errSinkThread $ \_ ->
       f serverIn serverOut serverProc
