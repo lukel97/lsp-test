@@ -1,5 +1,12 @@
 # Revision history for lsp-test
 
+## 0.9.0.0 -- 2019-12-1
+
+* Add `ignoreLogNotifications` config option
+* Add ability to override `logStdErr` and `logMessages` config options with
+  the `LSP_TEST_LOG_STDERR` and `LOG_TEST_LOG_MESSAGES` environment variables
+* Update for haskell-lsp-0.19.0.0 (@mpickering)
+
 ## 0.8.2.0 -- 2019-11-17
 
 * Expose `satisfyMaybe` (@cocreature)

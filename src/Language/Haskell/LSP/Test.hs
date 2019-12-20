@@ -37,6 +37,7 @@ module Language.Haskell.LSP.Test
   , module Language.Haskell.LSP.Test.Parsing
   -- * Utilities
   -- | Quick helper functions for common tasks.
+
   -- ** Initialization
   , initializeResponse
   -- ** Documents
@@ -109,10 +110,10 @@ import Language.Haskell.LSP.Test.Exceptions
 import Language.Haskell.LSP.Test.Parsing
 import Language.Haskell.LSP.Test.Session
 import Language.Haskell.LSP.Test.Server
+import System.Environment
 import System.IO
 import System.Directory
 import System.FilePath
-import qualified Data.Rope.UTF16 as Rope
 
 -- | Starts a new session.
 --
@@ -136,9 +137,11 @@ runSessionWithConfig :: SessionConfig -- ^ Configuration options for the session
                      -> FilePath -- ^ The filepath to the root directory for the session.
                      -> Session a -- ^ The session to run.
                      -> IO a
-runSessionWithConfig config serverExe caps rootDir session = do
+runSessionWithConfig config' serverExe caps rootDir session = do
   pid <- getCurrentProcessID
   absRootDir <- canonicalizePath rootDir
+
+  config <- envOverrideConfig config'
 
   let initializeParams = InitializeParams (Just pid)
                                           (Just $ T.pack absRootDir)
@@ -184,12 +187,23 @@ runSessionWithConfig config serverExe caps rootDir session = do
       (RspShutdown _) -> return ()
       _               -> listenServer serverOut context
 
+  -- | Check environment variables to override the config
+  envOverrideConfig :: SessionConfig -> IO SessionConfig
+  envOverrideConfig cfg = do
+    logMessages' <- fromMaybe (logMessages cfg) <$> checkEnv "LSP_TEST_LOG_MESSAGES"
+    logStdErr' <- fromMaybe (logStdErr cfg) <$> checkEnv "LSP_TEST_LOG_STDERR"
+    return $ cfg { logMessages = logMessages', logStdErr = logStdErr' }
+    where checkEnv :: String -> IO (Maybe Bool)
+          checkEnv s = fmap convertVal <$> lookupEnv s
+          convertVal "0" = False
+          convertVal _ = True
+
 -- | The current text contents of a document.
 documentContents :: TextDocumentIdentifier -> Session T.Text
 documentContents doc = do
   vfs <- vfs <$> get
   let file = vfsMap vfs Map.! toNormalizedUri (doc ^. uri)
-  return $ Rope.toText $ Language.Haskell.LSP.VFS._text file
+  return (virtualFileText file)
 
 -- | Parses an ApplyEditRequest, checks that it is for the passed document
 -- and returns the new content
@@ -452,7 +466,7 @@ getVersionedDoc (TextDocumentIdentifier uri) = do
   fs <- vfsMap . vfs <$> get
   let ver =
         case fs Map.!? toNormalizedUri uri of
-          Just (VirtualFile v _) -> Just v
+          Just vf -> Just (virtualFileVersion vf)
           _ -> Nothing
   return (VersionedTextDocumentIdentifier uri ver)
 

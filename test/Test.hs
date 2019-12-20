@@ -93,7 +93,9 @@ main = hspec $ do
                 getDocumentSymbols doc
                 -- should now timeout
                 skipManyTill anyMessage message :: Session ApplyWorkspaceEditRequest
-        in sesh `shouldThrow` (== Timeout)
+            isTimeout (Timeout _) = True
+            isTimeout _ = False
+        in sesh `shouldThrow` isTimeout
 
 
     describe "SessionException" $ do
@@ -332,6 +334,12 @@ main = hspec $ do
       let pred (NotLogMessage _) = True
           pred _ = False
       void $ satisfy pred
+
+  describe "ignoreLogNotifications" $
+    it "works" $
+      runSessionWithConfig (defaultConfig { ignoreLogNotifications = True }) "hie"  fullCaps "test/data" $ do
+        openDoc "Format.hs" "haskell"
+        void publishDiagnosticsNotification
 
 mkRange sl sc el ec = Range (Position sl sc) (Position el ec)
 

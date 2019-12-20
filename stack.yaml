@@ -1,11 +1,3 @@
-resolver: lts-13.26
+resolver: nightly-2019-12-16
 packages:
   - .
-
-extra-deps:
-  - rope-utf16-splay-0.3.1.0
-  - github: alanz/haskell-lsp
-    commit: 2aacc5ca706bcce111e976a1af4a95a376137c5e
-    subdirs:
-      - .
-      - haskell-lsp-types

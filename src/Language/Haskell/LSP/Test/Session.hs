@@ -91,15 +91,24 @@ instance MonadFail Session where
 -- | Stuff you can configure for a 'Session'.
 data SessionConfig = SessionConfig
   { messageTimeout :: Int  -- ^ Maximum time to wait for a message in seconds, defaults to 60.
-  , logStdErr      :: Bool -- ^ Redirect the server's stderr to this stdout, defaults to False.
-  , logMessages    :: Bool -- ^ Trace the messages sent and received to stdout, defaults to False.
+  , logStdErr      :: Bool
+  -- ^ Redirect the server's stderr to this stdout, defaults to False.
+  -- Can be overriden with @LSP_TEST_LOG_STDERR@.
+  , logMessages    :: Bool
+  -- ^ Trace the messages sent and received to stdout, defaults to False.
+  -- Can be overriden with the environment variable @LSP_TEST_LOG_MESSAGES@.
   , logColor       :: Bool -- ^ Add ANSI color to the logged messages, defaults to True.
   , lspConfig      :: Maybe Value -- ^ The initial LSP config as JSON value, defaults to Nothing.
+  , ignoreLogNotifications :: Bool
+  -- ^ Whether or not to ignore 'Language.Haskell.LSP.Types.ShowMessageNotification' and
+  -- 'Language.Haskell.LSP.Types.LogMessageNotification', defaults to False.
+  --
+  -- @since 0.9.0.0
   }
 
 -- | The configuration used in 'Language.Haskell.LSP.Test.runSession'.
 defaultConfig :: SessionConfig
-defaultConfig = SessionConfig 60 False False True Nothing
+defaultConfig = SessionConfig 60 False False True Nothing False
 
 instance Default SessionConfig where
   def = defaultConfig
@@ -181,15 +190,20 @@ runSession context state (Session session) = runReaderT (runStateT conduit state
 
     chanSource = do
       msg <- liftIO $ readChan (messageChan context)
-      yield msg
+      unless (ignoreLogNotifications (config context) && isLogNotification msg) $
+        yield msg
       chanSource
+
+    isLogNotification (ServerMessage (NotShowMessage _)) = True
+    isLogNotification (ServerMessage (NotLogMessage _)) = True
+    isLogNotification _ = False
 
     watchdog :: ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
     watchdog = Conduit.awaitForever $ \msg -> do
       curId <- curTimeoutId <$> get
       case msg of
         ServerMessage sMsg -> yield sMsg
-        TimeoutMessage tId -> when (curId == tId) $ throw Timeout
+        TimeoutMessage tId -> when (curId == tId) $ lastReceivedMessage <$> get >>= throw . Timeout
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
 -- It also does not automatically send initialize and exit messages.
@@ -281,7 +295,7 @@ updateState (ReqApplyWorkspaceEdit r) = do
   forM_ bumpedVersions $ \(VersionedTextDocumentIdentifier uri v) ->
     modify $ \s ->
       let oldVFS = vfs s
-          update (VirtualFile oldV t) = VirtualFile (fromMaybe oldV v) t
+          update (VirtualFile oldV file_ver t) = VirtualFile (fromMaybe oldV v) (file_ver + 1) t
           newVFS = updateVFS (Map.adjust update (toNormalizedUri uri)) oldVFS
       in s { vfs = newVFS }
 
@@ -290,7 +304,7 @@ updateState (ReqApplyWorkspaceEdit r) = do
           ctx <- ask
 
           -- if its not open, open it
-          unless (toNormalizedUri uri `Map.member` (vfsMap oldVFS)) $ do
+          unless (toNormalizedUri uri `Map.member` vfsMap oldVFS) $ do
             let fp = fromJust $ uriToFilePath uri
             contents <- liftIO $ T.readFile fp
             let item = TextDocumentItem (filePathToUri fp) "" 0 contents
@@ -361,4 +375,5 @@ logMsg t msg = do
           | otherwise       = Cyan
 
         showPretty = B.unpack . encodePretty
+
 
