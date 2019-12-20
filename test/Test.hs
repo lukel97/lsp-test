@@ -16,7 +16,7 @@ import           Control.Monad
 import           Control.Lens hiding (List)
 import           GHC.Generics
 import           Language.Haskell.LSP.Messages
-import           Language.Haskell.LSP.Test hiding (runSession)
+import           Language.Haskell.LSP.Test
 import           Language.Haskell.LSP.Test.Replay
 import           Language.Haskell.LSP.Types
 import           Language.Haskell.LSP.Types.Lens as LSP hiding
@@ -26,8 +26,6 @@ import           System.Timeout
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 {-# ANN module ("HLint: ignore Unnecessary hiding" :: String) #-}
-
-runSession = runSessionWithConfig (defaultConfig { logStdErr = True })
 
 main = hspec $ do
   describe "Session" $ do
