@@ -44,7 +44,7 @@ main = hspec $ do
 
     describe "withTimeout" $ do
       it "times out" $
-        let sesh = runSession "hie -d --bios-verbose" fullCaps "test/data/renamePass" $ do
+        let sesh = runSession "hie" fullCaps "test/data/renamePass" $ do
                     openDoc "Desktop/simple.hs" "haskell"
                     -- won't receive a request - will timeout
                     -- incoming logging requests shouldn't increase the
