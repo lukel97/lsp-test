@@ -33,13 +33,13 @@ jobs:
         ref: ${{ env.hieref }}
         path: haskell-ide-engine
 
-    # - name: Cache Cabal
-    #   uses: actions/cache@v1
-    #   with:
-    #     path: ~/.cabal
-    #     key: ${{ runner.OS }}-${{ matrix.ghc }}-cabal-${{ hashFiles('../**/*.cabal') }}
-    #     restore-keys: |
-    #       ${{ runner.OS }}-${{ matrix.ghc }}-cabal
+    - name: Cache Cabal
+      uses: actions/cache@v1.1.0
+      with:
+        path: ~/.cabal
+        key: ${{ runner.OS }}-${{ matrix.ghc }}-cabal-${{ hashFiles('*.cabal') }}
+        restore-keys: |
+          ${{ runner.OS }}-${{ matrix.ghc }}-cabal
 
     - name: Build HIE
       run: |
