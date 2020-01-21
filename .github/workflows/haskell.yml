@@ -41,6 +41,12 @@ jobs:
         restore-keys: |
           ${{ runner.OS }}-${{ matrix.ghc }}-cabal
 
+    - name: Cache Hoogle
+      uses: actions/cache@v1.1.0
+      with:
+        path: ~/.hoogle
+        key: ${{ runner.OS }}-${{ matrix.ghc }}-hoogle-${{ env.hieref }}
+
     - name: Build HIE
       run: |
         if [ -e $HOME/.cabal/bin/hie ]; then
@@ -52,7 +58,12 @@ jobs:
         cabal install hoogle
         popd
     - name: Generate hoogle database
-      run: hoogle generate
+      run: |
+        if [ -d $HOME/.hoogle ]; then
+           echo "hoogle database already built"
+           exit 0
+        fi
+        hoogle generate
     - name: Install JS Language Server
       run: npm install javascript-typescript-langserver
     - name: Build
