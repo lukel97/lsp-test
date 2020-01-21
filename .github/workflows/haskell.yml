@@ -49,10 +49,6 @@ jobs:
 
     - name: Build HIE
       run: |
-        if [ -e $HOME/.cabal/bin/hie ]; then
-            echo "hie is already built"
-            exit 0
-        fi
         pushd ../haskell-ide-engine
         cabal install hie
         cabal install hoogle
@@ -70,7 +66,5 @@ jobs:
       run: cabal build
     - name: Test
       run: |
-        echo $PATH
-        echo $(npm bin)
         export PATH=$PATH:$(npm bin) 
         cabal test
