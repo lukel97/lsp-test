@@ -7,11 +7,11 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     env:
-      hieref: 8582a960dc1ca389734707f821b273b00bae54ab
+      hieref: 4fb5b32df61f95d295ca67043594674bbb5b1316
 
     strategy:
       matrix:
-        ghc: ['8.6.5', '8.4.4']
+        ghc: ['8.8.1', '8.6.5', '8.4.4']
         os: [ubuntu-latest, macOS-latest]
         exclude:
           - os: macOS-latest
