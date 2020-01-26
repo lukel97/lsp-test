@@ -23,7 +23,6 @@ jobs:
       with:
         ghc-version: ${{ matrix.ghc }}
         cabal-version: '3.0'
-    - run: cabal update
 
     - name: Clone HIE
       uses: actions/checkout@v1
@@ -46,6 +45,8 @@ jobs:
       with:
         path: ~/.hoogle
         key: ${{ runner.OS }}-${{ matrix.ghc }}-hoogle-${{ env.hieref }}
+
+    - run: cabal update
 
     - name: Build HIE
       run: |
