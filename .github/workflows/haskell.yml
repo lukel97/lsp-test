@@ -7,7 +7,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     env:
-      hieref: 4fb5b32df61f95d295ca67043594674bbb5b1316
+      hieref: 970637fa13ef29ccc3c0a977248fcea83bdd11d7
 
     strategy:
       matrix:
