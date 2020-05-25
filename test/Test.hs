@@ -8,10 +8,12 @@ import           Data.Aeson
 import           Data.Default
 import qualified Data.HashMap.Strict as HM
 import           Data.Either
+import           Data.List (sortOn)
 import           Data.Maybe
 import qualified Data.Text as T
 import           Control.Applicative.Combinators
 import           Control.Concurrent
+import           Control.Exception (finally)
 import           Control.Monad.IO.Class
 import           Control.Monad
 import           Control.Lens hiding (List)
@@ -377,6 +379,40 @@ main = findServer >>= \serverExe -> hspec $ do
       count 0 $ loggingNotification
       void $ anyResponse
 
+  describe "file watching" $
+    it "works" $ do
+      tmp <- liftIO getTemporaryDirectory
+      let testFile = tmp </> "lsp-test.watch"
+          testFile' = tmp </> "lsp-test.nowatch"
+      finally (runSession serverExe fullCaps "" $ do
+        loggingNotification -- initialized log message
+
+        createDoc ".register.tmp" "haskell" ""
+        message :: Session RegisterCapabilityRequest
+
+        liftIO $ writeFile testFile "Hello" -- >> hFlush h
+        NotLogMessage msg <- loggingNotification
+        liftIO $ msg ^. params . LSP.message `shouldBe` "got workspace/didChangeWatchedFiles"
+
+        -- this shouldn't trigger a watch files thingy
+        liftIO $ writeFile testFile' "Hello"
+        doc <- createDoc "blah" "haskell" ""
+
+        let testNoLog = do
+              void $ sendRequest TextDocumentHover $
+                TextDocumentPositionParams doc (Position 0 0) Nothing
+              count 0 $ loggingNotification
+              void $ anyResponse
+        testNoLog
+
+        -- unwatch .watch in tmp
+        createDoc ".unregister.tmp" "haskell" ""
+        message :: Session UnregisterCapabilityRequest
+
+        -- modifying shouldn't return anything
+        liftIO $ writeFile testFile "Hello"
+        testNoLog) (mapM_ removeFile [testFile, testFile'])
+
 
 mkRange :: Int -> Int -> Int -> Int -> Range
 mkRange sl sc el ec = Range (Position sl sc) (Position el ec)
@@ -394,23 +430,24 @@ docChangesCaps = def { _workspace = Just workspaceCaps }
     editCaps = WorkspaceEditClientCapabilities (Just True)
 
 
-findExeRecursive :: FilePath -> FilePath -> IO (Maybe FilePath)
+findExeRecursive :: FilePath -> FilePath -> IO [FilePath]
 findExeRecursive exe dir = do
-  me <- listToMaybe <$> findExecutablesInDirectories [dir] exe
-  case me of
-    Just e -> return (Just e)
-    Nothing -> do
-      subdirs <- (fmap (dir </>)) <$> listDirectory dir >>= filterM doesDirectoryExist
-      foldM (\acc subdir -> case acc of
-                              Just y -> pure $ Just y
-                              Nothing -> findExeRecursive exe subdir)
-            Nothing
-            subdirs
+  exes <- findExecutablesInDirectories [dir] exe
+  subdirs <- (fmap (dir </>)) <$> listDirectory dir >>= filterM doesDirectoryExist
+  exes' <- concat <$> mapM (findExeRecursive exe) subdirs
+  return $ exes ++ exes'
+
+newestExe :: [FilePath] -> IO (Maybe FilePath)
+newestExe exes = do
+  pairs <- zip exes <$> mapM getModificationTime exes
+  case sortOn snd pairs of
+    (e,_):_ -> return $ Just e
+    _ -> return Nothing
 
 -- | So we can find the dummy-server with cabal run
 -- since it doesnt put build tools on the path (only cabal test)
 findServer = do
   let serverName = "dummy-server"
   e <- findExecutable serverName
-  e' <- findExeRecursive serverName "dist-newstyle"
+  e' <- findExeRecursive serverName "dist-newstyle" >>= newestExe
   pure $ fromJust $ e <|> e'

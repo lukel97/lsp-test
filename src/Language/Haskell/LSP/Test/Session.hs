@@ -70,9 +70,12 @@ import Language.Haskell.LSP.Test.Decoding
 import Language.Haskell.LSP.Test.Exceptions
 import System.Console.ANSI
 import System.Directory
+import System.FSNotify (watchTree, eventPath, withManager, WatchManager)
+import qualified System.FSNotify as FS
 import System.IO
 import System.Process (ProcessHandle())
 import System.Timeout
+import System.FilePath.Glob (match, commonDirectory, compile)
 
 -- | A session representing one instance of launching and connecting to a server.
 --
@@ -131,6 +134,7 @@ data SessionContext = SessionContext
   , initRsp :: MVar InitializeResponse
   , config :: SessionConfig
   , sessionCapabilities :: ClientCapabilities
+  , watchManager :: WatchManager
   }
 
 class Monad m => HasReader r m where
@@ -141,7 +145,7 @@ class Monad m => HasReader r m where
 instance HasReader SessionContext Session where
   ask  = Session (lift $ lift Reader.ask)
 
-instance Monad m => HasReader r (ConduitM a b (StateT s (ReaderT r m))) where
+instance Monad m => HasReader r (ConduitT a b (StateT s (ReaderT r m))) where
   ask = lift $ lift Reader.ask
 
 getCurTimeoutId :: (HasReader SessionContext m, MonadIO m) => m Int
@@ -167,6 +171,7 @@ data SessionState = SessionState
   , curDynCaps :: Map.Map T.Text Registration
   -- ^ The capabilities that the server has dynamically registered with us so
   -- far
+  , unwatchers :: Map.Map T.Text [IO ()]
   }
 
 class Monad m => HasState s m where
@@ -188,7 +193,7 @@ instance Monad m => HasState s (StateT s m) where
   get = State.get
   put = State.put
 
-instance (Monad m, (HasState s m)) => HasState s (ConduitM a b m)
+instance (Monad m, (HasState s m)) => HasState s (ConduitT a b m)
  where
   get = lift get
   put = lift . put
@@ -220,7 +225,7 @@ runSession context state (Session session) = runReaderT (runStateT conduit state
     isLogNotification (ServerMessage (NotLogMessage _)) = True
     isLogNotification _ = False
 
-    watchdog :: ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
+    watchdog :: ConduitT SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
     watchdog = Conduit.awaitForever $ \msg -> do
       curId <- getCurTimeoutId
       case msg of
@@ -256,27 +261,31 @@ runSessionWithHandles serverIn serverOut serverProc serverHandler config caps ro
 
   mainThreadId <- myThreadId
 
-  let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps
-      initState vfs = SessionState (IdInt 0) vfs mempty False Nothing mempty
-      runSession' ses = initVFS $ \vfs -> runSession context (initState vfs) ses
+  withManager $ \watchManager -> do
+    let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps watchManager
+        initState vfs = SessionState (IdInt 0) vfs mempty False Nothing mempty mempty
+        -- Interesting note: turning on TypeFamilies causes type inference to
+        -- infer the type runSession' :: Session () -> IO ((), SessionState)
+        -- instead of     runSession' :: Session a  -> IO (a , SessionState)
+        runSession' ses = initVFS $ \vfs -> runSession context (initState vfs) ses
 
-      errorHandler = throwTo mainThreadId :: SessionException -> IO ()
-      serverListenerLauncher =
-        forkIO $ catch (serverHandler serverOut context) errorHandler
-      server = (Just serverIn, Just serverOut, Nothing, serverProc)
-      serverAndListenerFinalizer tid = do
-        finally (timeout (messageTimeout config * 1^6)
-                         (runSession' exitServer))
-                -- Make sure to kill the listener first, before closing
-                -- handles etc via cleanupProcess
-                (killThread tid >> cleanupProcess server)
+        errorHandler = throwTo mainThreadId :: SessionException -> IO ()
+        serverListenerLauncher =
+          forkIO $ catch (serverHandler serverOut context) errorHandler
+        server = (Just serverIn, Just serverOut, Nothing, serverProc)
+        serverAndListenerFinalizer tid = do
+          finally (timeout (messageTimeout config * 1^6)
+                          (runSession' exitServer))
+                  -- Make sure to kill the listener first, before closing
+                  -- handles etc via cleanupProcess
+                  (killThread tid >> cleanupProcess server)
 
-  (result, _) <- bracket serverListenerLauncher
-                         serverAndListenerFinalizer
-                         (const $ runSession' session)
-  return result
+    (result, _) <- bracket serverListenerLauncher
+                          serverAndListenerFinalizer
+                          (const $ runSession' session)
+    return result
 
-updateStateC :: ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
+updateStateC :: ConduitT FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
 updateStateC = awaitForever $ \msg -> do
   updateState msg
   yield msg
@@ -290,11 +299,19 @@ updateState (ReqRegisterCapability req) = do
   modify $ \s ->
     s { curDynCaps = Map.union (Map.fromList newRegs) (curDynCaps s) }
 
+  -- Process the new registrations
+  forM_ newRegs $ \(regId, reg) -> do
+    when (reg ^. method == WorkspaceDidChangeWatchedFiles) $ do
+      processFileWatchRegistration regId reg
+
 updateState (ReqUnregisterCapability req) = do
   let List unRegs = (^. LSP.id) <$> req ^. params . unregistrations
   modify $ \s ->
     let newCurDynCaps = foldr' Map.delete (curDynCaps s) unRegs
     in s { curDynCaps = newCurDynCaps }
+
+  -- Process the unregistrations
+  processFileWatchUnregistrations unRegs
 
 updateState (NotPublishDiagnostics n) = do
   let List diags = n ^. params . diagnostics
@@ -347,6 +364,7 @@ updateState (ReqApplyWorkspaceEdit r) = do
             contents <- liftIO $ T.readFile fp
             let item = TextDocumentItem (filePathToUri fp) "" 0 contents
                 msg = NotificationMessage "2.0" TextDocumentDidOpen (DidOpenTextDocumentParams item)
+            -- TODO: use 'sendMessage'?
             liftIO $ B.hPut (serverIn ctx) $ addHeader (encode msg)
 
             modifyM $ \s -> do
@@ -390,6 +408,7 @@ withTimeout duration f = do
   modify $ \s -> s { overridingTimeout = False }
   return res
 
+-- TODO: add a shouldTimeout helper. need to add exceptions within Session
 data LogMsgType = LogServer | LogClient
   deriving Eq
 
@@ -412,3 +431,52 @@ logMsg t msg = do
           | otherwise       = Cyan
 
         showPretty = B.unpack . encodePretty
+
+-- File watching
+
+processFileWatchRegistration :: (MonadIO m, HasReader SessionContext m, HasState SessionState m)
+                             => T.Text -> Registration -> m ()
+processFileWatchRegistration regId reg = do
+  mgr <- asks watchManager
+  let mOpts = do
+        regOpts <- reg ^. registerOptions
+        case fromJSON regOpts  of
+          Error _ -> Nothing
+          Success x -> Just x
+  case mOpts of
+    Nothing -> pure ()
+    Just (DidChangeWatchedFilesRegistrationOptions (List ws)) ->
+      forM_ ws $ \(FileSystemWatcher pat' watchKind) -> do
+        pat <- liftIO $ canonicalizePath pat'
+        let glob = compile pat
+            -- the root-most dir before any globbing stuff happens
+            dir = fst $ commonDirectory glob
+            pred = match glob . eventPath
+            -- If no watchKind specified, spec defaults to all true
+            WatchKind wkC wkM wkD = fromMaybe (WatchKind True True True) watchKind
+        handle <- asks serverIn
+        unwatch <- liftIO $ watchTree mgr dir pred $ \event -> do
+          let fe = FileEvent (filePathToUri (eventPath event)) typ
+              typ = case event of
+                FS.Added _ _ _ -> FcCreated
+                FS.Modified _ _ _ -> FcChanged
+                FS.Removed _ _ _ -> FcDeleted
+                -- This is a bit of a guess
+                FS.Unknown _ _ _ -> FcChanged
+              matches = case typ of
+                FcCreated -> wkC
+                FcChanged -> wkM
+                FcDeleted -> wkD
+              params = DidChangeWatchedFilesParams (List [fe])
+              msg = fmClientDidChangeWatchedFilesNotification params
+          liftIO $ when matches $ B.hPut handle (addHeader $ encode msg)
+        modify $ \s ->
+          s { unwatchers = Map.insertWith (++) regId [unwatch] (unwatchers s) }
+
+processFileWatchUnregistrations :: (MonadIO m, HasReader SessionContext m, HasState SessionState m)
+                                => [T.Text] -> m ()
+processFileWatchUnregistrations regIds =
+  forM_ regIds $ \regId -> modifyM $ \s -> do
+    let fs = fromMaybe [] (Map.lookup regId (unwatchers s))
+    liftIO $ sequence fs
+    return $ s { unwatchers = Map.delete regId (unwatchers s) }

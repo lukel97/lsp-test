@@ -76,6 +76,15 @@ handlers lfvar = def
                 DidChangeWatchedFilesRegistrationOptions $ List
                 [ FileSystemWatcher (curDir </> "*.watch") (Just (WatchKind True True True)) ]
             ]
+      when (".register.tmp" `isSuffixOf` fp) $ do
+        tmpDir <- getTemporaryDirectory
+        reqId <- readMVar lfvar >>= getNextReqId
+        send $ ReqRegisterCapability $ fmServerRegisterCapabilityRequest reqId $
+          RegistrationParams $ List $
+            [ Registration "2" WorkspaceDidChangeWatchedFiles $ Just $ toJSON $
+                DidChangeWatchedFilesRegistrationOptions $ List
+                [ FileSystemWatcher (tmpDir </> "*.watch") (Just (WatchKind True True True)) ]
+            ]
 
       -- also act as an unregisterer for workspace/didChangeWatchedFiles
       when (".unregister" `isSuffixOf` fp) $ do
@@ -86,6 +95,10 @@ handlers lfvar = def
         reqId <- readMVar lfvar >>= getNextReqId
         send $ ReqUnregisterCapability $ fmServerUnregisterCapabilityRequest reqId $
           UnregistrationParams $ List [ Unregistration "1" "workspace/didChangeWatchedFiles" ]
+      when (".unregister.tmp" `isSuffixOf` fp) $ do
+        reqId <- readMVar lfvar >>= getNextReqId
+        send $ ReqUnregisterCapability $ fmServerUnregisterCapabilityRequest reqId $
+          UnregistrationParams $ List [ Unregistration "2" "workspace/didChangeWatchedFiles" ]
   , executeCommandHandler = pure $ \req -> do
       send $ RspExecuteCommand $ makeResponseMessage req Null
       reqId <- readMVar lfvar >>= getNextReqId

@@ -55,6 +55,7 @@ library
                      , Diff
                      , directory
                      , filepath
+                     , fsnotify >= 0.3 && < 0.4
                      , Glob >= 0.9 && < 0.11
                      , lens
                      , mtl
