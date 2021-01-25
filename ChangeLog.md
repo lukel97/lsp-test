@@ -1,5 +1,9 @@
 # Revision history for lsp-test
 
+## 0.12.0.0 -- 2021-01-25
+
+* Add `getIncompleteProgressSessions` to track in ongoing progress sessions (@wz1000)
+
 ## 0.11.0.0 -- 2020-05-14
 
 * Replace `openDoc'` with `createDoc` which now sends

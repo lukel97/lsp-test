@@ -1,5 +1,5 @@
 name:                lsp-test
-version:             0.11.0.7
+version:             0.12.0.0
 synopsis:            Functional test framework for LSP servers.
 description:
   A test framework for writing tests against
@@ -16,7 +16,7 @@ license-file:        LICENSE
 author:              Luke Lau
 maintainer:          luke_lau@icloud.com
 bug-reports:         https://github.com/bubba/lsp-test/issues
-copyright:           2020 Luke Lau
+copyright:           2021 Luke Lau
 category:            Testing
 build-type:          Simple
 cabal-version:       2.0
