@@ -56,6 +56,7 @@ module Language.Haskell.LSP.Test
   , waitForDiagnosticsSource
   , noDiagnostics
   , getCurrentDiagnostics
+  , getIncompleteProgressSessions
   -- ** Commands
   , executeCommand
   -- ** Code Actions
@@ -93,6 +94,7 @@ import Control.Monad.IO.Class
 import Control.Exception
 import Control.Lens hiding ((.=), List)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Aeson
@@ -516,6 +518,10 @@ getCodeActionContext doc = do
 -- Note that this does not wait for more to come in.
 getCurrentDiagnostics :: TextDocumentIdentifier -> Session [Diagnostic]
 getCurrentDiagnostics doc = fromMaybe [] . Map.lookup (toNormalizedUri $ doc ^. uri) . curDiagnostics <$> get
+
+-- | Returns the tokens of all progress sessions that have started but not yet ended.
+getIncompleteProgressSessions :: Session (Set.Set ProgressToken)
+getIncompleteProgressSessions = curProgressSessions <$> get
 
 -- | Executes a command.
 executeCommand :: Command -> Session ()
