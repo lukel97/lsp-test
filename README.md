@@ -1,3 +1,8 @@
+# The lsp-test repo has been merged into haskell/lsp
+
+Please visit [haskell/lsp](https://github.com/haskell/lsp) instead (Don't worry though, it's still mantained and still lives under the same lsp-test package on hackage)
+
+
 # lsp-test [![Actions Status](https://github.com/bubba/lsp-test/workflows/Haskell%20CI/badge.svg)](https://github.com/bubba/lsp-test/actions) [![Hackage](https://img.shields.io/hackage/v/lsp-test.svg)](https://hackage.haskell.org/package/lsp-test)
 lsp-test is a functional testing framework for Language Server Protocol servers.
 
